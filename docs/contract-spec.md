@@ -29,9 +29,7 @@ Every state-changing method requires an active escrow. Amounts are integer token
 ### `PayoutTarget`
 
 ```text
-payout_type = 0: stellar_address must be set
-payout_type = 1: destination_domain and non-zero recipient are used for CCTP
-payout_type = 2: unset contributor; releases are rejected
+stellar_address: set for an assigned contributor; unset contributors cannot be paid
 ```
 
 ### `MilestoneStatus`
@@ -49,7 +47,7 @@ The contract maintains this derived balance:
 available = total_deposited - reserved - total_released
 ```
 
-Milestone creation must fit within `available`, withdrawals cannot exceed it, and releasing or cancelling a milestone reduces `reserved`. The tests exercise funding, reservation, withdrawal, release, partial release, and CCTP paths.
+Milestone creation must fit within `available`, withdrawals cannot exceed it, and releasing or cancelling a milestone reduces `reserved`. The tests exercise funding, reservation, withdrawal, and Stellar payout paths.
 
 ## Storage and events
 
@@ -73,7 +71,6 @@ State-changing methods emit typed events for initialization, deposits, withdrawa
 | 20–22 | `InsufficientBalance`, `WithdrawExceedsAvailable`, `ZeroAmount` |
 | 30–34 | `MilestoneNotFound`, `MilestoneNotPending`, `MilestoneNotActive`, `DuplicateIssueId`, `ReleaseTooLarge` |
 | 40 | `ContributorNotSet` |
-| 50–52 | `InvalidCctpDomain`, `InvalidCctpRecipient`, `CctpAmountPrecisionLoss` |
 
 ## Deployment and integration
 

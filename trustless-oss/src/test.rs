@@ -169,10 +169,7 @@ fn test_storage_milestone_roundtrip() {
         title: String::from_str(&env, "Fix critical bug"),
         reward: 50_000_000,
         contributor: PayoutTarget {
-            payout_type: 2,
             stellar_address: None,
-            destination_domain: 0,
-            recipient: BytesN::from_array(&env, &[0u8; 32]),
         },
         status: MilestoneStatus::Pending,
         created_at: 1000,
@@ -189,7 +186,7 @@ fn test_storage_milestone_roundtrip() {
         assert_eq!(loaded.issue_id, 100);
         assert_eq!(loaded.title, String::from_str(&env, "Fix critical bug"));
         assert_eq!(loaded.reward, 50_000_000);
-        assert_eq!(loaded.contributor.payout_type, 2);
+        assert_eq!(loaded.contributor.stellar_address, None);
         assert_eq!(loaded.status, MilestoneStatus::Pending);
         assert_eq!(loaded.created_at, 1000);
         assert_eq!(loaded.released_at, None);
@@ -315,10 +312,7 @@ fn test_ttl_extended_on_milestone_write() {
         title: String::from_str(&env, "Test"),
         reward: 100_000_000,
         contributor: PayoutTarget {
-            payout_type: 2,
             stellar_address: None,
-            destination_domain: 0,
-            recipient: BytesN::from_array(&env, &[0u8; 32]),
         },
         status: MilestoneStatus::Pending,
         created_at: 100,
@@ -446,10 +440,7 @@ fn test_release_funds_not_active_panics() {
         title: String::from_str(&env, "Test"),
         reward: 100,
         contributor: PayoutTarget {
-            payout_type: 0,
             stellar_address: Some(Address::generate(&env)),
-            destination_domain: 0,
-            recipient: BytesN::from_array(&env, &[0u8; 32]),
         },
         status: MilestoneStatus::Pending,
         created_at: 100,
@@ -479,10 +470,7 @@ fn test_release_funds_contributor_not_set() {
         title: String::from_str(&env, "Test 2"),
         reward: 100,
         contributor: PayoutTarget {
-            payout_type: 2,
             stellar_address: None,
-            destination_domain: 0,
-            recipient: BytesN::from_array(&env, &[0u8; 32]),
         },
         status: MilestoneStatus::Active,
         created_at: 100,
@@ -512,10 +500,7 @@ fn test_partial_release_too_large() {
         title: String::from_str(&env, "Test 3"),
         reward: 100,
         contributor: PayoutTarget {
-            payout_type: 0,
             stellar_address: Some(Address::generate(&env)),
-            destination_domain: 0,
-            recipient: BytesN::from_array(&env, &[0u8; 32]),
         },
         status: MilestoneStatus::Active,
         created_at: 100,
@@ -696,10 +681,7 @@ fn test_withdraw_respects_reserved() {
             title: String::from_str(&setup.env, "Reserved milestone"),
             reward: 300,
             contributor: PayoutTarget {
-                payout_type: 0,
                 stellar_address: Some(Address::generate(&setup.env)),
-                destination_domain: 0,
-                recipient: BytesN::from_array(&setup.env, &[0u8; 32]),
             },
             status: MilestoneStatus::Active,
             created_at: 100,
@@ -731,55 +713,23 @@ fn test_withdraw_requires_maintainer() {
     setup.client.withdraw_funds(&100);
 }
 
-use soroban_sdk::Symbol;
-
-#[contract]
-pub struct MockTokenMessengerMinter;
-
-#[contractimpl]
-impl MockTokenMessengerMinter {
-    pub fn set_contract(env: Env, contract: Address) {
-        env.storage().instance().set(&Symbol::new(&env, "contract"), &contract);
-    }
-
-    pub fn deposit_for_burn(
-        env: Env,
-        amount: i128,
-        _destination_domain: u32,
-        _mint_recipient: BytesN<32>,
-        burn_token: Address,
-    ) -> BytesN<32> {
-        let contract: Address = env.storage().instance().get(&Symbol::new(&env, "contract")).unwrap();
-        let usdc_client = token::Client::new(&env, &burn_token);
-        usdc_client.transfer_from(&env.current_contract_address(), &contract, &env.current_contract_address(), &amount);
-        
-        BytesN::from_array(&env, &[1u8; 32])
-    }
-}
+// ---------------------------------------------------------------------------
+// Stellar payouts
+// ---------------------------------------------------------------------------
 
 #[test]
-fn test_release_funds_cctp_success() {
+fn test_release_funds_transfers_to_stellar_contributor() {
     let setup = setup_funding_env(1_000);
     setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+    let contributor = Address::generate(&setup.env);
 
-    let minter_address = Address::from_string(
-        &soroban_sdk::String::from_str(&setup.env, "CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP"),
-    );
-    setup.env.register_contract(&minter_address, MockTokenMessengerMinter);
-    let minter_client = MockTokenMessengerMinterClient::new(&setup.env, &minter_address);
-    minter_client.set_contract(&setup.contract_id);
-
-    let recipient = BytesN::from_array(&setup.env, &[2u8; 32]);
     setup.env.as_contract(&setup.contract_id, || {
         let milestone = Milestone {
             issue_id: 1,
-            title: String::from_str(&setup.env, "Test CCTP"),
+            title: String::from_str(&setup.env, "Stellar payout"),
             reward: 500,
             contributor: PayoutTarget {
-                payout_type: 1,
-                stellar_address: None,
-                destination_domain: 6,
-                recipient: recipient.clone(),
+                stellar_address: Some(contributor.clone()),
             },
             status: MilestoneStatus::Active,
             created_at: 100,
@@ -787,7 +737,7 @@ fn test_release_funds_cctp_success() {
             actual_released: 0,
         };
         storage::set_milestone(&setup.env, 1, &milestone);
-        
+
         let mut escrow = storage::get_escrow(&setup.env).unwrap();
         escrow.reserved += 500;
         storage::set_escrow(&setup.env, &escrow);
@@ -799,34 +749,28 @@ fn test_release_funds_cctp_success() {
     assert_eq!(milestone.status, MilestoneStatus::Released);
     assert_eq!(milestone.actual_released, 500);
 
+    let escrow = setup.client.get_escrow();
+    assert_eq!(escrow.reserved, 0);
+    assert_eq!(escrow.total_released, 500);
+
     let token_client = token::Client::new(&setup.env, &setup.token);
-    assert_eq!(token_client.balance(&minter_address), 500);
+    assert_eq!(token_client.balance(&contributor), 500);
     assert_eq!(token_client.balance(&setup.contract_id), 500);
 }
 
 #[test]
-fn test_partial_release_cctp_success() {
+fn test_partial_release_transfers_to_stellar_contributor() {
     let setup = setup_funding_env(1_000);
     setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+    let contributor = Address::generate(&setup.env);
 
-    let minter_address = Address::from_string(
-        &soroban_sdk::String::from_str(&setup.env, "CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP"),
-    );
-    setup.env.register_contract(&minter_address, MockTokenMessengerMinter);
-    let minter_client = MockTokenMessengerMinterClient::new(&setup.env, &minter_address);
-    minter_client.set_contract(&setup.contract_id);
-
-    let recipient = BytesN::from_array(&setup.env, &[2u8; 32]);
     setup.env.as_contract(&setup.contract_id, || {
         let milestone = Milestone {
             issue_id: 1,
-            title: String::from_str(&setup.env, "Test CCTP Partial"),
+            title: String::from_str(&setup.env, "Partial Stellar payout"),
             reward: 500,
             contributor: PayoutTarget {
-                payout_type: 1,
-                stellar_address: None,
-                destination_domain: 6,
-                recipient: recipient.clone(),
+                stellar_address: Some(contributor.clone()),
             },
             status: MilestoneStatus::Active,
             created_at: 100,
@@ -834,7 +778,7 @@ fn test_partial_release_cctp_success() {
             actual_released: 0,
         };
         storage::set_milestone(&setup.env, 1, &milestone);
-        
+
         let mut escrow = storage::get_escrow(&setup.env).unwrap();
         escrow.reserved += 500;
         storage::set_escrow(&setup.env, &escrow);
@@ -846,115 +790,11 @@ fn test_partial_release_cctp_success() {
     assert_eq!(milestone.status, MilestoneStatus::Released);
     assert_eq!(milestone.actual_released, 400);
 
+    let escrow = setup.client.get_escrow();
+    assert_eq!(escrow.reserved, 0);
+    assert_eq!(escrow.total_released, 400);
+
     let token_client = token::Client::new(&setup.env, &setup.token);
-    assert_eq!(token_client.balance(&minter_address), 400);
+    assert_eq!(token_client.balance(&contributor), 400);
     assert_eq!(token_client.balance(&setup.contract_id), 600);
-}
-
-#[test]
-fn test_release_funds_cctp_invalid_domain() {
-    let setup = setup_funding_env(1_000);
-    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
-
-    let minter_address = Address::from_string(
-        &soroban_sdk::String::from_str(&setup.env, "CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP"),
-    );
-    setup.env.register_contract(&minter_address, MockTokenMessengerMinter);
-    let minter_client = MockTokenMessengerMinterClient::new(&setup.env, &minter_address);
-    minter_client.set_contract(&setup.contract_id);
-
-    let recipient = BytesN::from_array(&setup.env, &[2u8; 32]);
-    setup.env.as_contract(&setup.contract_id, || {
-        let milestone = Milestone {
-            issue_id: 1,
-            title: String::from_str(&setup.env, "Test"),
-            reward: 500,
-            contributor: PayoutTarget {
-                payout_type: 1,
-                stellar_address: None,
-                destination_domain: 99, // Invalid
-                recipient: recipient.clone(),
-            },
-            status: MilestoneStatus::Active,
-            created_at: 100,
-            released_at: None,
-            actual_released: 0,
-        };
-        storage::set_milestone(&setup.env, 1, &milestone);
-    });
-
-    let result = setup.client.try_release_funds(&1);
-    assert_eq!(result.unwrap_err().unwrap(), ContractError::InvalidCctpDomain);
-}
-
-#[test]
-fn test_release_funds_cctp_invalid_recipient() {
-    let setup = setup_funding_env(1_000);
-    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
-
-    let minter_address = Address::from_string(
-        &soroban_sdk::String::from_str(&setup.env, "CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP"),
-    );
-    setup.env.register_contract(&minter_address, MockTokenMessengerMinter);
-    let minter_client = MockTokenMessengerMinterClient::new(&setup.env, &minter_address);
-    minter_client.set_contract(&setup.contract_id);
-
-    let recipient = BytesN::from_array(&setup.env, &[0u8; 32]); // All zeroes
-    setup.env.as_contract(&setup.contract_id, || {
-        let milestone = Milestone {
-            issue_id: 1,
-            title: String::from_str(&setup.env, "Test"),
-            reward: 500,
-            contributor: PayoutTarget {
-                payout_type: 1,
-                stellar_address: None,
-                destination_domain: 6,
-                recipient: recipient.clone(),
-            },
-            status: MilestoneStatus::Active,
-            created_at: 100,
-            released_at: None,
-            actual_released: 0,
-        };
-        storage::set_milestone(&setup.env, 1, &milestone);
-    });
-
-    let result = setup.client.try_release_funds(&1);
-    assert_eq!(result.unwrap_err().unwrap(), ContractError::InvalidCctpRecipient);
-}
-
-#[test]
-fn test_release_funds_cctp_precision_loss() {
-    let setup = setup_funding_env(1_000);
-    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
-
-    let minter_address = Address::from_string(
-        &soroban_sdk::String::from_str(&setup.env, "CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP"),
-    );
-    setup.env.register_contract(&minter_address, MockTokenMessengerMinter);
-    let minter_client = MockTokenMessengerMinterClient::new(&setup.env, &minter_address);
-    minter_client.set_contract(&setup.contract_id);
-
-    let recipient = BytesN::from_array(&setup.env, &[2u8; 32]);
-    setup.env.as_contract(&setup.contract_id, || {
-        let milestone = Milestone {
-            issue_id: 1,
-            title: String::from_str(&setup.env, "Test"),
-            reward: 505, // Not multiple of 10
-            contributor: PayoutTarget {
-                payout_type: 1,
-                stellar_address: None,
-                destination_domain: 6,
-                recipient: recipient.clone(),
-            },
-            status: MilestoneStatus::Active,
-            created_at: 100,
-            released_at: None,
-            actual_released: 0,
-        };
-        storage::set_milestone(&setup.env, 1, &milestone);
-    });
-
-    let result = setup.client.try_release_funds(&1);
-    assert_eq!(result.unwrap_err().unwrap(), ContractError::CctpAmountPrecisionLoss);
 }

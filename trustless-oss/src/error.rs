@@ -28,9 +28,4 @@ pub enum ContractError {
 
     // Contributor
     ContributorNotSet = 40,
-
-    // CCTP
-    InvalidCctpDomain = 50,
-    InvalidCctpRecipient = 51,
-    CctpAmountPrecisionLoss = 52,
 }

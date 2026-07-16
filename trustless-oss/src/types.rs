@@ -1,12 +1,9 @@
-use soroban_sdk::{contracttype, Address, BytesN, String};
+use soroban_sdk::{contracttype, Address, String};
 
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
 pub struct PayoutTarget {
-    pub payout_type: u32, // 0 = Stellar address, 1 = CCTP
     pub stellar_address: Option<Address>,
-    pub destination_domain: u32,
-    pub recipient: BytesN<32>,
 }
 
 #[contracttype]

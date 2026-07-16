@@ -91,7 +91,6 @@ flowchart LR
     G[GitHub webhook backend] -->|confirmed merge| P[Platform wallet]
     P -->|release or partial release| E
     E -->|Stellar payout| S[Contributor wallet]
-    E -->|CCTP payout| C[Cross-chain recipient]
 
     classDef actor fill:#fff3bf,stroke:#f08c46,color:#5f370e,stroke-width:2px;
     classDef state fill:#d3f9d8,stroke:#2b8a3e,color:#123b1a,stroke-width:2px;
@@ -100,7 +99,7 @@ flowchart LR
     class A actor;
     class E,M state;
     class G,P service;
-    class S,C payout;
+    class S payout;
 ```
 
 ## Deploy and invoke

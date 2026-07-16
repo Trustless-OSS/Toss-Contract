@@ -32,7 +32,7 @@ Recommended types:
 
 | Type | Use for | Example |
 | --- | --- | --- |
-| `feat` | New contract behavior | `feat/cctp-payout-validation` |
+| `feat` | New contract behavior | `feat/contributor-payouts` |
 | `fix` | Bug fixes | `fix/available-balance-check` |
 | `docs` | README or documentation changes | `docs/contract-architecture` |
 | `test` | Test-only changes | `test/milestone-cancellation` |
@@ -55,7 +55,7 @@ Examples:
 ```text
 feat(milestones): add contributor reassignment
 fix(storage): extend milestone TTL after writes
-test(payouts): cover invalid CCTP recipients
+test(payouts): cover unset contributors
 docs(readme): simplify contributor onboarding
 ci(rust): run workspace tests on pull requests
 ```

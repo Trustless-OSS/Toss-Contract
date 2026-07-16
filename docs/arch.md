@@ -13,18 +13,14 @@ flowchart TB
     USDC[USDC Stellar Asset Contract]
     Platform[Platform wallet]
     Stellar[Stellar contributor address]
-    CCTP[CCTP Token Messenger / Minter]
-    Chain[Destination chain recipient]
 
     GitHub -->|webhooks| Backend
     Backend -->|initialize, milestones, queries| Soroban
     Maintainer -->|authorize funding and milestone changes| Soroban
-    Soroban -->|transfer and approve| USDC
+    Soroban -->|transfer| USDC
     Backend -->|confirm completion| Platform
     Platform -->|authorize release| Soroban
     Soroban -->|direct transfer| Stellar
-    Soroban -->|deposit_for_burn| CCTP
-    CCTP -->|mint on destination chain| Chain
 
     classDef human fill:#fff3bf,stroke:#f08c46,color:#5f370e,stroke-width:2px;
     classDef external fill:#ffe3e3,stroke:#c92a2a,color:#641414,stroke-width:2px;
@@ -32,7 +28,7 @@ flowchart TB
     classDef contract fill:#d3f9d8,stroke:#2b8a3e,color:#123b1a,stroke-width:2px;
     classDef asset fill:#e5dbff,stroke:#7048e8,color:#30156e,stroke-width:2px;
     class Maintainer,Platform human;
-    class GitHub,USDC,CCTP,Chain external;
+    class GitHub,USDC external;
     class Backend app;
     class Soroban contract;
     class Stellar asset;
@@ -42,13 +38,13 @@ flowchart TB
 
 | Module | Responsibility |
 | --- | --- |
-| `lib.rs` | Contract entry points, escrow/milestone transitions, token transfers, and CCTP payout dispatch. |
+| `lib.rs` | Contract entry points, escrow/milestone transitions, and token transfers. |
 | `types.rs` | `EscrowState`, `Milestone`, `MilestoneStatus`, `PayoutTarget`, and `BalanceInfo` contract types. |
 | `storage.rs` | Persistent keys, reads/writes, issue-ID indexing, and storage TTL extension. |
 | `auth.rs` | Soroban authorization checks for the maintainer, platform, and active escrow state. |
 | `events.rs` | Typed event topics emitted after state-changing operations. |
 | `error.rs` | Stable numeric `ContractError` values returned by entry points. |
-| `test.rs` | In-memory Soroban environment, token mocks, authorization tests, and CCTP payout tests. |
+| `test.rs` | In-memory Soroban environment, token mocks, authorization tests, and payout tests. |
 
 ## State and storage
 
@@ -119,23 +115,16 @@ sequenceDiagram
     participant C as Soroban contract
     participant T as USDC SAC
     participant S as Stellar contributor
-    participant X as CCTP minter
 
     W->>C: release_funds(issue_id)
     C->>C: require platform auth
     C->>C: validate Active milestone
-    alt Stellar payout (payout_type = 0)
-        C->>T: transfer(contract, contributor, amount)
-        T-->>S: credit USDC
-    else CCTP payout (payout_type = 1)
-        C->>T: approve(contract, CCTP minter, amount)
-        C->>X: deposit_for_burn(amount, domain, recipient, token)
-        X-->>X: burn and emit cross-chain message
-    end
+    C->>T: transfer(contract, contributor, amount)
+    T-->>S: credit USDC
     C->>C: persist state and emit event
 ```
 
-`PayoutTarget.payout_type` is `0` for a Stellar address, `1` for CCTP, and `2` for an unset contributor. CCTP releases validate the destination domain, reject a zero recipient, and require an amount divisible by 10 to avoid precision loss.
+`PayoutTarget.stellar_address` contains the contributor's Stellar address. An unset address causes releases to be rejected with `ContributorNotSet`.
 
 ## Authorization boundaries
 

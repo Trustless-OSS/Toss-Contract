@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, Env, String, Vec, BytesN};
+use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, Env, String, Vec};
 
 pub mod auth;
 pub mod error;
@@ -12,27 +12,7 @@ pub mod types;
 mod test;
 
 use error::ContractError;
-use types::{BalanceInfo, EscrowState, Milestone, PayoutTarget, MilestoneStatus};
-
-const CCTP_TOKEN_MESSENGER_MINTER: &str = "CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP";
-
-#[soroban_sdk::contractclient(name = "TokenMessengerMinterClient")]
-pub trait TokenMessengerMinter {
-    fn deposit_for_burn(
-        env: Env,
-        amount: i128,
-        destination_domain: u32,
-        mint_recipient: BytesN<32>,
-        burn_token: Address,
-    ) -> BytesN<32>;
-}
-
-fn is_supported_cctp_domain(domain: u32) -> bool {
-    matches!(
-        domain,
-        0 | 1 | 2 | 3 | 5 | 6 | 7 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 21 | 22 | 25 | 26 | 28 | 29 | 30 | 31 | 32
-    )
-}
+use types::{BalanceInfo, EscrowState, Milestone, MilestoneStatus, PayoutTarget};
 
 fn execute_payout(
     env: &Env,
@@ -40,42 +20,13 @@ fn execute_payout(
     target: &PayoutTarget,
     amount: i128,
 ) -> Result<(), ContractError> {
-    if target.payout_type == 0 {
-        let recipient_address = target.stellar_address.clone().ok_or(ContractError::ContributorNotSet)?;
-        let token_client = token::Client::new(env, token);
-        token_client.transfer(&env.current_contract_address(), &recipient_address, &amount);
-        Ok(())
-    } else if target.payout_type == 1 {
-        if !is_supported_cctp_domain(target.destination_domain) {
-            return Err(ContractError::InvalidCctpDomain);
-        }
-        let zero_bytes = BytesN::from_array(env, &[0u8; 32]);
-        if target.recipient == zero_bytes {
-            return Err(ContractError::InvalidCctpRecipient);
-        }
-        if amount % 10 != 0 {
-            return Err(ContractError::CctpAmountPrecisionLoss);
-        }
-
-        let minter_address = Address::from_string(
-            &soroban_sdk::String::from_str(env, CCTP_TOKEN_MESSENGER_MINTER),
-        );
-
-        let token_client = token::Client::new(env, token);
-        token_client.approve(
-            &env.current_contract_address(),
-            &minter_address,
-            &amount,
-            &(env.ledger().sequence() + 100),
-        );
-
-        let minter_client = TokenMessengerMinterClient::new(env, &minter_address);
-        minter_client.deposit_for_burn(&amount, &target.destination_domain, &target.recipient, token);
-
-        Ok(())
-    } else {
-        Err(ContractError::ContributorNotSet)
-    }
+    let recipient_address = target
+        .stellar_address
+        .clone()
+        .ok_or(ContractError::ContributorNotSet)?;
+    let token_client = token::Client::new(env, token);
+    token_client.transfer(&env.current_contract_address(), &recipient_address, &amount);
+    Ok(())
 }
 
 #[contract]
@@ -210,10 +161,7 @@ impl TrustlessOssContract {
             title,
             reward,
             contributor: PayoutTarget {
-                payout_type: 2,
                 stellar_address: None,
-                destination_domain: 0,
-                recipient: BytesN::from_array(&env, &[0u8; 32]),
             },
             status: MilestoneStatus::Pending,
             created_at: env.ledger().timestamp(),
@@ -294,7 +242,7 @@ impl TrustlessOssContract {
 
         let reward = milestone.reward;
         let contributor = milestone.contributor.clone();
-        if contributor.payout_type == 2 {
+        if contributor.stellar_address.is_none() {
             return Err(ContractError::ContributorNotSet);
         }
 
@@ -336,7 +284,7 @@ impl TrustlessOssContract {
         }
 
         let contributor = milestone.contributor.clone();
-        if contributor.payout_type == 2 {
+        if contributor.stellar_address.is_none() {
             return Err(ContractError::ContributorNotSet);
         }
 
@@ -372,7 +320,9 @@ impl TrustlessOssContract {
 
         let mut milestone = storage::get_milestone(&env, issue_id)?;
 
-        if milestone.status != MilestoneStatus::Pending && milestone.status != MilestoneStatus::Active {
+        if milestone.status != MilestoneStatus::Pending
+            && milestone.status != MilestoneStatus::Active
+        {
             return Err(ContractError::MilestoneNotActive);
         }
 
