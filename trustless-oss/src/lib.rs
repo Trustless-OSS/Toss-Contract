@@ -14,7 +14,7 @@ mod test;
 use error::ContractError;
 use types::{BalanceInfo, EscrowState, Milestone, MilestoneStatus, PayoutTarget};
 
-fn execute_payout(
+fn route_payout(
     env: &Env,
     token: &Address,
     target: &PayoutTarget,
@@ -253,7 +253,7 @@ impl TrustlessOssContract {
         milestone.actual_released = reward;
         milestone.released_at = Some(env.ledger().timestamp());
 
-        execute_payout(&env, &escrow.token, &contributor, reward)?;
+        route_payout(&env, &escrow.token, &contributor, reward)?;
 
         storage::set_escrow(&env, &escrow);
         storage::set_milestone(&env, issue_id, &milestone);
@@ -295,7 +295,7 @@ impl TrustlessOssContract {
         milestone.actual_released = release_amount;
         milestone.released_at = Some(env.ledger().timestamp());
 
-        execute_payout(&env, &escrow.token, &contributor, release_amount)?;
+        route_payout(&env, &escrow.token, &contributor, release_amount)?;
 
         storage::set_escrow(&env, &escrow);
         storage::set_milestone(&env, issue_id, &milestone);
