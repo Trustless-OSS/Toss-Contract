@@ -14,19 +14,57 @@ mod test;
 use error::ContractError;
 use types::{BalanceInfo, EscrowState, Milestone, MilestoneStatus, PayoutTarget};
 
+pub const CCTP_TOKEN_MESSENGER_MINTER: &str = "CAE2G5Z77UP7GYPYGFOWFGW7C7J6I4YP2AFGSADRKQY62SYUFLPNFTXL";
+
+fn is_supported_domain(domain: u32) -> bool {
+    // Ethereum: 0, Avalanche: 1, Arbitrum: 3, Solana: 5, Base: 6, Polygon PoS: 7, Starknet: 25
+    matches!(domain, 0 | 1 | 3 | 5 | 6 | 7 | 25)
+}
+
 fn route_payout(
     env: &Env,
     token: &Address,
     target: &PayoutTarget,
     amount: i128,
 ) -> Result<(), ContractError> {
-    let recipient_address = target
-        .stellar_address
-        .clone()
-        .ok_or(ContractError::ContributorNotSet)?;
-    let token_client = token::Client::new(env, token);
-    token_client.transfer(&env.current_contract_address(), &recipient_address, &amount);
-    Ok(())
+    match target {
+        PayoutTarget::None => return Err(ContractError::ContributorNotSet),
+        PayoutTarget::Stellar(recipient_address) => {
+            let token_client = token::Client::new(env, token);
+            token_client.transfer(&env.current_contract_address(), recipient_address, &amount);
+            Ok(())
+        }
+        PayoutTarget::Cctp(destination_domain, recipient) => {
+            if !is_supported_domain(*destination_domain) {
+                return Err(ContractError::InvalidDomain);
+            }
+            if recipient.iter().all(|b| b == 0) {
+                return Err(ContractError::EmptyRecipient);
+            }
+            
+            let effective_burn_amount = amount / 10;
+            if effective_burn_amount == 0 {
+                return Err(ContractError::ZeroBurnAmount);
+            }
+
+            let cctp_address = Address::from_string(&String::from_str(env, CCTP_TOKEN_MESSENGER_MINTER));
+            
+            use soroban_sdk::IntoVal;
+            env.invoke_contract::<u64>(
+                &cctp_address,
+                &soroban_sdk::Symbol::new(env, "deposit_for_burn"),
+                soroban_sdk::vec![
+                    env,
+                    amount.into_val(env),
+                    (*destination_domain).into_val(env),
+                    recipient.clone().into_val(env),
+                    token.clone().into_val(env),
+                ],
+            );
+
+            Ok(())
+        }
+    }
 }
 
 #[contract]
@@ -160,9 +198,7 @@ impl TrustlessOssContract {
             issue_id,
             title,
             reward,
-            contributor: PayoutTarget {
-                stellar_address: None,
-            },
+            contributor: PayoutTarget::None,
             status: MilestoneStatus::Pending,
             created_at: env.ledger().timestamp(),
             released_at: None,
@@ -242,7 +278,7 @@ impl TrustlessOssContract {
 
         let reward = milestone.reward;
         let contributor = milestone.contributor.clone();
-        if contributor.stellar_address.is_none() {
+        if contributor == PayoutTarget::None {
             return Err(ContractError::ContributorNotSet);
         }
 
@@ -284,7 +320,7 @@ impl TrustlessOssContract {
         }
 
         let contributor = milestone.contributor.clone();
-        if contributor.stellar_address.is_none() {
+        if contributor == PayoutTarget::None {
             return Err(ContractError::ContributorNotSet);
         }
 
