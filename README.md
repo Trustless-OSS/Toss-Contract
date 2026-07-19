@@ -1,10 +1,10 @@
-# Trustless-OSS Soroban Contract
+# TOSS Soroban Contract
 
 [![CI](https://github.com/Trustless-OSS/Toss-Contract/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/Trustless-OSS/Toss-Contract/actions/workflows/rust.yml)
 [![Rust](https://img.shields.io/badge/Rust-2021-orange?logo=rust)](https://www.rust-lang.org/)
 [![Soroban SDK](https://img.shields.io/badge/Soroban%20SDK-23-blueviolet)](https://soroban.stellar.org/)
 
-Trustless-OSS is a Soroban smart contract for GitHub-integrated open-source bounties. It holds a repository's USDC escrow, reserves funds for milestones, and releases payouts when the platform confirms that work is complete.
+TOSS is a Soroban smart contract for Trustless-OSS  for replacing existing third party service. It holds a repository's USDC escrow, reserves funds for milestones, and releases payouts when the platform confirms that work is complete.
 
 The contract is designed to be called by a backend that listens to GitHub events. The maintainer controls funding and milestone setup; the platform wallet executes completed payouts.
 
@@ -12,22 +12,22 @@ The contract is designed to be called by a backend that listens to GitHub events
 
 ```text
 .
-├── Cargo.toml                 # Rust workspace configuration
-├── Cargo.lock                 # Locked dependency versions
-├── .github/workflows/rust.yml # Build and test CI
+├── Cargo.toml                
+├── Cargo.lock                
+├── .github/workflows/rust.yml 
 ├── trustless-oss/
-│   ├── Cargo.toml             # Contract crate
+│   ├── Cargo.toml             
 │   └── src/
-│       ├── lib.rs             # Contract entry points and payout logic
-│       ├── types.rs           # Escrow, milestone, and payout types
-│       ├── storage.rs         # Persistent Soroban storage helpers
-│       ├── auth.rs            # Maintainer, platform, and active checks
-│       ├── events.rs          # Contract event emitters
-│       ├── error.rs           # Contract error codes
-│       └── test.rs            # Unit and integration-style contract tests
+│       ├── lib.rs            
+│       ├── types.rs         
+│       ├── storage.rs        
+│       ├── auth.rs            
+│       ├── events.rs        
+│       ├── error.rs
+│       └── test.rs          
 └── docs/
-    ├── arch.md               # Architecture, diagrams, and state flows
-    └── contract-spec.md      # Detailed API, data model, and invariants
+    ├── arch.md              
+    └── contract-spec.md    
 ```
 
 Read [the architecture guide](docs/arch.md) for the system diagrams and [the contract specification](docs/contract-spec.md) for the complete entry-point and data-model reference.
@@ -133,23 +133,4 @@ stellar contract invoke \
 
 The first initializer becomes the stored admin. Later initialization attempts require that stored admin and are rejected once the escrow exists. See [deployment and invocation details](docs/contract-spec.md#deployment-and-integration) before using a real account.
 
-## Contributing
 
-1. Fork the repository and create a focused branch from `main`.
-2. Make the smallest change that addresses the issue.
-3. Add or update tests for contract behavior, authorization, balances, and events.
-4. Run the same checks used by CI:
-
-   ```bash
-   cargo fmt --all -- --check
-   cargo build --workspace --verbose
-   cargo test --workspace --verbose
-   ```
-
-5. Open a pull request against `main` with a concise description of the behavior change and verification performed.
-
-For contract-specific design constraints, balance invariants, error codes, and known limitations, read [the contract specification](docs/contract-spec.md). Please do not commit secret keys, deployed-account credentials, or private environment files.
-
-## License
-
-No license file is currently included in this repository. Add or confirm a project license before distributing the contract outside the repository.
