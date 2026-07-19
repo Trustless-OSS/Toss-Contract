@@ -115,7 +115,7 @@ impl TrustlessOssContract {
     /// Deposits USDC into the contract to fund upcoming milestones.
     pub fn deposit_funds(env: Env, amount: i128) -> Result<(), ContractError> {
         let mut escrow = storage::get_escrow(&env)?;
-        auth::require_maintainer(&env, &escrow);
+        auth::require_maintainer(&escrow);
         auth::require_active(&env, &escrow);
 
         if amount <= 0 {
@@ -135,7 +135,7 @@ impl TrustlessOssContract {
     /// Withdraws unreserved USDC funds back to the maintainer.
     pub fn withdraw_funds(env: Env, amount: i128) -> Result<(), ContractError> {
         let mut escrow = storage::get_escrow(&env)?;
-        auth::require_maintainer(&env, &escrow);
+        auth::require_maintainer(&escrow);
         auth::require_active(&env, &escrow);
 
         if amount <= 0 {
@@ -178,7 +178,7 @@ impl TrustlessOssContract {
         reward: i128,
     ) -> Result<(), ContractError> {
         let mut escrow = storage::get_escrow(&env)?;
-        auth::require_maintainer(&env, &escrow);
+        auth::require_maintainer(&escrow);
         auth::require_active(&env, &escrow);
 
         if reward <= 0 {
@@ -222,7 +222,7 @@ impl TrustlessOssContract {
         contributor: PayoutTarget,
     ) -> Result<(), ContractError> {
         let escrow = storage::get_escrow(&env)?;
-        auth::require_maintainer(&env, &escrow);
+        auth::require_maintainer(&escrow);
         auth::require_active(&env, &escrow);
 
         let mut milestone = storage::get_milestone(&env, issue_id)?;
@@ -247,7 +247,7 @@ impl TrustlessOssContract {
         new_contributor: PayoutTarget,
     ) -> Result<(), ContractError> {
         let escrow = storage::get_escrow(&env)?;
-        auth::require_maintainer(&env, &escrow);
+        auth::require_maintainer(&escrow);
         auth::require_active(&env, &escrow);
 
         let mut milestone = storage::get_milestone(&env, issue_id)?;
@@ -267,7 +267,7 @@ impl TrustlessOssContract {
     /// Releases the fully reserved reward amount to the assigned contributor upon completion.
     pub fn release_funds(env: Env, issue_id: u64) -> Result<(), ContractError> {
         let mut escrow = storage::get_escrow(&env)?;
-        auth::require_platform(&env, &escrow);
+        auth::require_platform(&escrow);
         auth::require_active(&env, &escrow);
 
         let mut milestone = storage::get_milestone(&env, issue_id)?;
@@ -306,7 +306,7 @@ impl TrustlessOssContract {
         release_amount: i128,
     ) -> Result<(), ContractError> {
         let mut escrow = storage::get_escrow(&env)?;
-        auth::require_platform(&env, &escrow);
+        auth::require_platform(&escrow);
         auth::require_active(&env, &escrow);
 
         let mut milestone = storage::get_milestone(&env, issue_id)?;
@@ -351,7 +351,7 @@ impl TrustlessOssContract {
     /// Cancels a milestone and un-reserves the funds, returning them to the available pool.
     pub fn cancel_milestone(env: Env, issue_id: u64) -> Result<(), ContractError> {
         let mut escrow = storage::get_escrow(&env)?;
-        auth::require_maintainer(&env, &escrow);
+        auth::require_maintainer(&escrow);
         auth::require_active(&env, &escrow);
 
         let mut milestone = storage::get_milestone(&env, issue_id)?;
