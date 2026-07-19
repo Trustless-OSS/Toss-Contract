@@ -28,4 +28,9 @@ pub enum ContractError {
 
     // Contributor
     ContributorNotSet = 40,
+
+    // CCTP
+    InvalidDomain = 50,
+    EmptyRecipient = 51,
+    ZeroBurnAmount = 52,
 }

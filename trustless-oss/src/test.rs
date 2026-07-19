@@ -168,9 +168,7 @@ fn test_storage_milestone_roundtrip() {
         issue_id: 100,
         title: String::from_str(&env, "Fix critical bug"),
         reward: 50_000_000,
-        contributor: PayoutTarget {
-            stellar_address: None,
-        },
+        contributor: PayoutTarget::None,
         status: MilestoneStatus::Pending,
         created_at: 1000,
         released_at: None,
@@ -186,7 +184,7 @@ fn test_storage_milestone_roundtrip() {
         assert_eq!(loaded.issue_id, 100);
         assert_eq!(loaded.title, String::from_str(&env, "Fix critical bug"));
         assert_eq!(loaded.reward, 50_000_000);
-        assert_eq!(loaded.contributor.stellar_address, None);
+        assert_eq!(loaded.contributor, PayoutTarget::None);
         assert_eq!(loaded.status, MilestoneStatus::Pending);
         assert_eq!(loaded.created_at, 1000);
         assert_eq!(loaded.released_at, None);
@@ -311,9 +309,7 @@ fn test_ttl_extended_on_milestone_write() {
         issue_id: 1,
         title: String::from_str(&env, "Test"),
         reward: 100_000_000,
-        contributor: PayoutTarget {
-            stellar_address: None,
-        },
+        contributor: PayoutTarget::None,
         status: MilestoneStatus::Pending,
         created_at: 100,
         released_at: None,
@@ -439,9 +435,7 @@ fn test_release_funds_not_active_panics() {
         issue_id: 1,
         title: String::from_str(&env, "Test"),
         reward: 100,
-        contributor: PayoutTarget {
-            stellar_address: Some(Address::generate(&env)),
-        },
+        contributor: PayoutTarget::Stellar(Address::generate(&env)),
         status: MilestoneStatus::Pending,
         created_at: 100,
         released_at: None,
@@ -469,9 +463,7 @@ fn test_release_funds_contributor_not_set() {
         issue_id: 2,
         title: String::from_str(&env, "Test 2"),
         reward: 100,
-        contributor: PayoutTarget {
-            stellar_address: None,
-        },
+        contributor: PayoutTarget::None,
         status: MilestoneStatus::Active,
         created_at: 100,
         released_at: None,
@@ -499,9 +491,7 @@ fn test_partial_release_too_large() {
         issue_id: 3,
         title: String::from_str(&env, "Test 3"),
         reward: 100,
-        contributor: PayoutTarget {
-            stellar_address: Some(Address::generate(&env)),
-        },
+        contributor: PayoutTarget::Stellar(Address::generate(&env)),
         status: MilestoneStatus::Active,
         created_at: 100,
         released_at: None,
@@ -680,9 +670,7 @@ fn test_withdraw_respects_reserved() {
             issue_id: 99,
             title: String::from_str(&setup.env, "Reserved milestone"),
             reward: 300,
-            contributor: PayoutTarget {
-                stellar_address: Some(Address::generate(&setup.env)),
-            },
+            contributor: PayoutTarget::Stellar(Address::generate(&setup.env)),
             status: MilestoneStatus::Active,
             created_at: 100,
             released_at: None,
@@ -728,9 +716,7 @@ fn test_release_funds_transfers_to_stellar_contributor() {
             issue_id: 1,
             title: String::from_str(&setup.env, "Stellar payout"),
             reward: 500,
-            contributor: PayoutTarget {
-                stellar_address: Some(contributor.clone()),
-            },
+            contributor: PayoutTarget::Stellar(contributor.clone()),
             status: MilestoneStatus::Active,
             created_at: 100,
             released_at: None,
@@ -769,9 +755,7 @@ fn test_partial_release_transfers_to_stellar_contributor() {
             issue_id: 1,
             title: String::from_str(&setup.env, "Partial Stellar payout"),
             reward: 500,
-            contributor: PayoutTarget {
-                stellar_address: Some(contributor.clone()),
-            },
+            contributor: PayoutTarget::Stellar(contributor.clone()),
             status: MilestoneStatus::Active,
             created_at: 100,
             released_at: None,
@@ -797,4 +781,89 @@ fn test_partial_release_transfers_to_stellar_contributor() {
     let token_client = token::Client::new(&setup.env, &setup.token);
     assert_eq!(token_client.balance(&contributor), 400);
     assert_eq!(token_client.balance(&setup.contract_id), 600);
+}
+
+// ---------------------------------------------------------------------------
+// CCTP payouts
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_cctp_invalid_domain() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let milestone = Milestone {
+            issue_id: 2,
+            title: String::from_str(&setup.env, "CCTP invalid domain"),
+            reward: 500,
+            contributor: PayoutTarget::Cctp(999, soroban_sdk::BytesN::from_array(&setup.env, &[1; 32])),
+            status: MilestoneStatus::Active,
+            created_at: 100,
+            released_at: None,
+            actual_released: 0,
+        };
+        storage::set_milestone(&setup.env, 2, &milestone);
+
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.reserved += 500;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    let result = setup.client.try_release_funds(&2);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::InvalidDomain);
+}
+
+#[test]
+fn test_cctp_empty_recipient() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let milestone = Milestone {
+            issue_id: 3,
+            title: String::from_str(&setup.env, "CCTP empty recipient"),
+            reward: 500,
+            contributor: PayoutTarget::Cctp(0, soroban_sdk::BytesN::from_array(&setup.env, &[0; 32])),
+            status: MilestoneStatus::Active,
+            created_at: 100,
+            released_at: None,
+            actual_released: 0,
+        };
+        storage::set_milestone(&setup.env, 3, &milestone);
+
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.reserved += 500;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    let result = setup.client.try_release_funds(&3);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EmptyRecipient);
+}
+
+#[test]
+fn test_cctp_zero_burn_amount() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let milestone = Milestone {
+            issue_id: 4,
+            title: String::from_str(&setup.env, "CCTP zero burn amount"),
+            reward: 5, // < 10 stroops, normalizes to 0
+            contributor: PayoutTarget::Cctp(0, soroban_sdk::BytesN::from_array(&setup.env, &[1; 32])),
+            status: MilestoneStatus::Active,
+            created_at: 100,
+            released_at: None,
+            actual_released: 0,
+        };
+        storage::set_milestone(&setup.env, 4, &milestone);
+
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.reserved += 5;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    let result = setup.client.try_release_funds(&4);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroBurnAmount);
 }
