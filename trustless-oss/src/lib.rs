@@ -372,6 +372,44 @@ impl TrustlessOssContract {
         Ok(())
     }
 
+    /// Transfers the admin role to a new address.
+    pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), ContractError> {
+        let escrow = storage::get_escrow(&env)?;
+        auth::require_admin(&env);
+        auth::require_active(&env, &escrow);
+
+        storage::set_admin(&env, &new_admin);
+        events::emit_admin_transferred(&env, new_admin);
+
+        Ok(())
+    }
+
+    /// Updates the platform address on the escrow state.
+    pub fn update_platform(env: Env, new_platform: Address) -> Result<(), ContractError> {
+        let mut escrow = storage::get_escrow(&env)?;
+        auth::require_admin(&env);
+        auth::require_active(&env, &escrow);
+
+        escrow.platform = new_platform.clone();
+        storage::set_escrow(&env, &escrow);
+        events::emit_platform_updated(&env, new_platform);
+
+        Ok(())
+    }
+
+    /// Updates the maintainer address on the escrow state.
+    pub fn update_maintainer(env: Env, new_maintainer: Address) -> Result<(), ContractError> {
+        let mut escrow = storage::get_escrow(&env)?;
+        auth::require_admin(&env);
+        auth::require_active(&env, &escrow);
+
+        escrow.maintainer = new_maintainer.clone();
+        storage::set_escrow(&env, &escrow);
+        events::emit_maintainer_updated(&env, new_maintainer);
+
+        Ok(())
+    }
+
     /// Retrieves the global state for this repository's escrow.
     pub fn get_escrow(env: Env) -> Result<EscrowState, ContractError> {
         storage::get_escrow(&env)
