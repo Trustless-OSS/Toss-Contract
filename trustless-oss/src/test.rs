@@ -867,3 +867,247 @@ fn test_cctp_zero_burn_amount() {
     let result = setup.client.try_release_funds(&4);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroBurnAmount);
 }
+
+// ---------------------------------------------------------------------------
+// Role rotation – transfer_admin
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_transfer_admin_success() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
+        .unwrap();
+
+    let new_admin = Address::generate(&env);
+    let result = c.try_transfer_admin(&new_admin);
+    assert!(result.is_ok());
+
+    env.as_contract(&contract_id, || {
+        let stored = storage::get_admin(&env);
+        assert_eq!(stored, Some(new_admin));
+    });
+}
+
+#[test]
+fn test_transfer_admin_emits_event() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
+        .unwrap();
+
+    let events_before = env.events().all().len();
+    let new_admin = Address::generate(&env);
+    c.try_transfer_admin(&new_admin).unwrap().unwrap();
+    assert!(env.events().all().len() > events_before);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized function call for address")]
+fn test_transfer_admin_requires_admin() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
+        .unwrap();
+
+    env.set_auths(&[]);
+    c.transfer_admin(&Address::generate(&env));
+}
+
+#[test]
+fn test_transfer_admin_rejects_inactive() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
+        .unwrap();
+
+    env.as_contract(&contract_id, || {
+        let mut escrow = storage::get_escrow(&env).unwrap();
+        escrow.is_active = false;
+        storage::set_escrow(&env, &escrow);
+    });
+
+    let result = c.try_transfer_admin(&Address::generate(&env));
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::EscrowInactive
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Role rotation – update_platform
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_update_platform_success() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
+        .unwrap();
+
+    let new_platform = Address::generate(&env);
+    let result = c.try_update_platform(&new_platform);
+    assert!(result.is_ok());
+
+    let escrow = c.get_escrow();
+    assert_eq!(escrow.platform, new_platform);
+}
+
+#[test]
+fn test_update_platform_emits_event() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
+        .unwrap();
+
+    let events_before = env.events().all().len();
+    c.try_update_platform(&Address::generate(&env))
+        .unwrap()
+        .unwrap();
+    assert!(env.events().all().len() > events_before);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized function call for address")]
+fn test_update_platform_requires_admin() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
+        .unwrap();
+
+    env.set_auths(&[]);
+    c.update_platform(&Address::generate(&env));
+}
+
+#[test]
+fn test_update_platform_rejects_inactive() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
+        .unwrap();
+
+    env.as_contract(&contract_id, || {
+        let mut escrow = storage::get_escrow(&env).unwrap();
+        escrow.is_active = false;
+        storage::set_escrow(&env, &escrow);
+    });
+
+    let result = c.try_update_platform(&Address::generate(&env));
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::EscrowInactive
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Role rotation – update_maintainer
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_update_maintainer_success() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
+        .unwrap();
+
+    let new_maintainer = Address::generate(&env);
+    let result = c.try_update_maintainer(&new_maintainer);
+    assert!(result.is_ok());
+
+    let escrow = c.get_escrow();
+    assert_eq!(escrow.maintainer, new_maintainer);
+}
+
+#[test]
+fn test_update_maintainer_emits_event() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
+        .unwrap();
+
+    let events_before = env.events().all().len();
+    c.try_update_maintainer(&Address::generate(&env))
+        .unwrap()
+        .unwrap();
+    assert!(env.events().all().len() > events_before);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized function call for address")]
+fn test_update_maintainer_requires_admin() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
+        .unwrap();
+
+    env.set_auths(&[]);
+    c.update_maintainer(&Address::generate(&env));
+}
+
+#[test]
+fn test_update_maintainer_rejects_inactive() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
+        .unwrap();
+
+    env.as_contract(&contract_id, || {
+        let mut escrow = storage::get_escrow(&env).unwrap();
+        escrow.is_active = false;
+        storage::set_escrow(&env, &escrow);
+    });
+
+    let result = c.try_update_maintainer(&Address::generate(&env));
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::EscrowInactive
+    );
+}

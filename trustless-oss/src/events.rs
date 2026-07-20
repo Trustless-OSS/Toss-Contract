@@ -12,6 +12,9 @@ pub enum EventKey {
     FundsReleased,
     PartialRelease,
     MilestoneCancelled,
+    AdminTransferred,
+    PlatformUpdated,
+    MaintainerUpdated,
 }
 
 pub fn emit_escrow_initialized(env: &Env, repo_id: u64, maintainer: Address) {
@@ -68,5 +71,20 @@ pub fn emit_partial_release(
 
 pub fn emit_milestone_cancelled(env: &Env, issue_id: u64) {
     let topics = (EventKey::MilestoneCancelled, issue_id);
+    env.events().publish(topics, ());
+}
+
+pub fn emit_admin_transferred(env: &Env, new_admin: Address) {
+    let topics = (EventKey::AdminTransferred, new_admin);
+    env.events().publish(topics, ());
+}
+
+pub fn emit_platform_updated(env: &Env, new_platform: Address) {
+    let topics = (EventKey::PlatformUpdated, new_platform);
+    env.events().publish(topics, ());
+}
+
+pub fn emit_maintainer_updated(env: &Env, new_maintainer: Address) {
+    let topics = (EventKey::MaintainerUpdated, new_maintainer);
     env.events().publish(topics, ());
 }
