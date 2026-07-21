@@ -2,8 +2,10 @@ use soroban_sdk::{contracttype, Address, String};
 
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
-pub struct PayoutTarget {
-    pub stellar_address: Option<Address>,
+pub enum PayoutTarget {
+    None,
+    Stellar(Address),
+    Cctp(u32, soroban_sdk::BytesN<32>),
 }
 
 #[contracttype]
