@@ -878,3 +878,216 @@ fn test_cctp_zero_burn_amount() {
     let result = setup.client.try_release_funds(&4);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroBurnAmount);
 }
+
+// ---------------------------------------------------------------------------
+// update_milestone
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_update_milestone_title_only() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "Original title"), &100)
+        .unwrap()
+        .unwrap();
+
+    let new_title = String::from_str(&setup.env, "Fixed typo in title");
+    setup.client
+        .try_update_milestone(&1, &new_title, &100)
+        .unwrap()
+        .unwrap();
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.title, new_title);
+    assert_eq!(milestone.reward, 100);
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 100);
+    assert_eq!(balance.available, 900);
+}
+
+#[test]
+fn test_update_milestone_reward_increase_within_balance() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "Task"), &100)
+        .unwrap()
+        .unwrap();
+
+    setup.client
+        .try_update_milestone(&1, &String::from_str(&setup.env, "Task"), &200)
+        .unwrap()
+        .unwrap();
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.reward, 200);
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 200);
+    assert_eq!(balance.available, 800);
+}
+
+#[test]
+fn test_update_milestone_reward_increase_exceeds_balance() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "Task"), &100)
+        .unwrap()
+        .unwrap();
+
+    let result = setup.client.try_update_milestone(&1, &String::from_str(&setup.env, "Task"), &2000);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::InsufficientBalance);
+}
+
+#[test]
+fn test_update_milestone_reward_decrease_frees_available() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "Task"), &300)
+        .unwrap()
+        .unwrap();
+
+    setup.client
+        .try_update_milestone(&1, &String::from_str(&setup.env, "Task"), &100)
+        .unwrap()
+        .unwrap();
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.reward, 100);
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 100);
+    assert_eq!(balance.available, 900);
+}
+
+#[test]
+fn test_update_milestone_active_status_fails() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "Task"), &100)
+        .unwrap()
+        .unwrap();
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let mut milestone = storage::get_milestone(&setup.env, 1).unwrap();
+        milestone.status = MilestoneStatus::Active;
+        storage::set_milestone(&setup.env, 1, &milestone);
+    });
+
+    let result = setup.client.try_update_milestone(&1, &String::from_str(&setup.env, "New title"), &150);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::MilestoneNotPending);
+}
+
+#[test]
+fn test_update_milestone_released_status_fails() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "Task"), &100)
+        .unwrap()
+        .unwrap();
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let mut milestone = storage::get_milestone(&setup.env, 1).unwrap();
+        milestone.status = MilestoneStatus::Released;
+        storage::set_milestone(&setup.env, 1, &milestone);
+    });
+
+    let result = setup.client.try_update_milestone(&1, &String::from_str(&setup.env, "New title"), &150);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::MilestoneNotPending);
+}
+
+#[test]
+fn test_update_milestone_cancelled_status_fails() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "Task"), &100)
+        .unwrap()
+        .unwrap();
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let mut milestone = storage::get_milestone(&setup.env, 1).unwrap();
+        milestone.status = MilestoneStatus::Cancelled;
+        storage::set_milestone(&setup.env, 1, &milestone);
+    });
+
+    let result = setup.client.try_update_milestone(&1, &String::from_str(&setup.env, "New title"), &150);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::MilestoneNotPending);
+}
+
+#[test]
+fn test_update_milestone_zero_reward_panics() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "Task"), &100)
+        .unwrap()
+        .unwrap();
+
+    let result = setup.client.try_update_milestone(&1, &String::from_str(&setup.env, "Task"), &0);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroAmount);
+}
+
+#[test]
+fn test_update_milestone_negative_reward_panics() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "Task"), &100)
+        .unwrap()
+        .unwrap();
+
+    let result = setup.client.try_update_milestone(&1, &String::from_str(&setup.env, "Task"), &-1);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroAmount);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized function call for address")]
+fn test_update_milestone_requires_maintainer() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "Task"), &100)
+        .unwrap()
+        .unwrap();
+
+    setup.env.set_auths(&[]);
+    setup.client.update_milestone(&1, &String::from_str(&setup.env, "New title"), &150);
+}
+
+#[test]
+fn test_update_milestone_emits_event() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "Original title"), &100)
+        .unwrap()
+        .unwrap();
+
+    let events_before = setup.env.events().all().len();
+
+    let new_title = String::from_str(&setup.env, "Updated title");
+    setup.client
+        .try_update_milestone(&1, &new_title, &150)
+        .unwrap()
+        .unwrap();
+
+    assert!(setup.env.events().all().len() > events_before);
+}

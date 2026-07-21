@@ -12,6 +12,7 @@ pub enum DataKey {
     FundsReleased,
     PartialRelease,
     MilestoneCancelled,
+    MilestoneUpdated,
 }
 
 pub fn emit_escrow_initialized(env: &Env, repo_id: u64, maintainer: Address) {
@@ -68,5 +69,10 @@ pub fn emit_partial_release(
 
 pub fn emit_milestone_cancelled(env: &Env, issue_id: u64) {
     let topics = (DataKey::MilestoneCancelled, issue_id);
+    env.events().publish(topics, ());
+}
+
+pub fn emit_milestone_updated(env: &Env, issue_id: u64, title: &soroban_sdk::String, reward: i128) {
+    let topics = (DataKey::MilestoneUpdated, issue_id, title.clone(), reward);
     env.events().publish(topics, ());
 }
