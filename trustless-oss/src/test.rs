@@ -297,7 +297,9 @@ fn test_ttl_extended_on_escrow_write() {
             .storage()
             .persistent()
             .get_ttl(&storage::StorageKey::Escrow);
-        assert!(ttl >= 100_000);
+        // `get_ttl` excludes the current ledger, so an `extend_to` value of
+        // 200,000 is observed as 199,999 at sequence number 1.
+        assert_eq!(ttl, 199_999);
     });
 }
 
@@ -322,7 +324,7 @@ fn test_ttl_extended_on_milestone_write() {
             .storage()
             .persistent()
             .get_ttl(&storage::StorageKey::Milestone(1));
-        assert!(ttl >= 100_000);
+        assert_eq!(ttl, 199_999);
     });
 }
 
@@ -337,7 +339,7 @@ fn test_ttl_extended_on_admin_write() {
             .storage()
             .persistent()
             .get_ttl(&storage::StorageKey::Admin);
-        assert!(ttl >= 100_000);
+        assert_eq!(ttl, 199_999);
     });
 }
 
@@ -351,7 +353,7 @@ fn test_ttl_extended_on_issue_ids_write() {
             .storage()
             .persistent()
             .get_ttl(&storage::StorageKey::EscrowIssueIds);
-        assert!(ttl >= 100_000);
+        assert_eq!(ttl, 199_999);
     });
 }
 
@@ -797,7 +799,10 @@ fn test_cctp_invalid_domain() {
             issue_id: 2,
             title: String::from_str(&setup.env, "CCTP invalid domain"),
             reward: 500,
-            contributor: PayoutTarget::Cctp(999, soroban_sdk::BytesN::from_array(&setup.env, &[1; 32])),
+            contributor: PayoutTarget::Cctp(
+                999,
+                soroban_sdk::BytesN::from_array(&setup.env, &[1; 32]),
+            ),
             status: MilestoneStatus::Active,
             created_at: 100,
             released_at: None,
@@ -824,7 +829,10 @@ fn test_cctp_empty_recipient() {
             issue_id: 3,
             title: String::from_str(&setup.env, "CCTP empty recipient"),
             reward: 500,
-            contributor: PayoutTarget::Cctp(0, soroban_sdk::BytesN::from_array(&setup.env, &[0; 32])),
+            contributor: PayoutTarget::Cctp(
+                0,
+                soroban_sdk::BytesN::from_array(&setup.env, &[0; 32]),
+            ),
             status: MilestoneStatus::Active,
             created_at: 100,
             released_at: None,
@@ -851,7 +859,10 @@ fn test_cctp_zero_burn_amount() {
             issue_id: 4,
             title: String::from_str(&setup.env, "CCTP zero burn amount"),
             reward: 5, // < 10 stroops, normalizes to 0
-            contributor: PayoutTarget::Cctp(0, soroban_sdk::BytesN::from_array(&setup.env, &[1; 32])),
+            contributor: PayoutTarget::Cctp(
+                0,
+                soroban_sdk::BytesN::from_array(&setup.env, &[1; 32]),
+            ),
             status: MilestoneStatus::Active,
             created_at: 100,
             released_at: None,

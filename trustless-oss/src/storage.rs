@@ -2,10 +2,10 @@ use crate::error::ContractError;
 use crate::types::{EscrowState, Milestone};
 use soroban_sdk::{contracttype, Address, Env, Vec};
 
-// Persistent entries are bumped back to a full lifetime whenever they are
-// touched; a single constant keeps threshold and extend-to identical, which
-// preserves the existing on-chain behaviour.
-const TTL_LEDGERS: u32 = 100_000;
+// Refresh an entry once it has less than this many ledgers remaining, then
+// extend it to the longer target lifetime.
+const TTL_THRESHOLD_LEDGERS: u32 = 100_000;
+const TTL_EXTEND_TO_LEDGERS: u32 = 200_000;
 
 #[contracttype]
 pub enum StorageKey {
@@ -28,7 +28,7 @@ pub fn set_escrow(env: &Env, escrow: &EscrowState) {
     env.storage().persistent().set(&key, escrow);
     env.storage()
         .persistent()
-        .extend_ttl(&key, TTL_LEDGERS, TTL_LEDGERS);
+        .extend_ttl(&key, TTL_THRESHOLD_LEDGERS, TTL_EXTEND_TO_LEDGERS);
 }
 
 pub fn has_escrow(env: &Env) -> bool {
@@ -49,7 +49,7 @@ pub fn set_milestone(env: &Env, issue_id: u64, milestone: &Milestone) {
     env.storage().persistent().set(&key, milestone);
     env.storage()
         .persistent()
-        .extend_ttl(&key, TTL_LEDGERS, TTL_LEDGERS);
+        .extend_ttl(&key, TTL_THRESHOLD_LEDGERS, TTL_EXTEND_TO_LEDGERS);
 }
 
 pub fn get_issue_ids(env: &Env) -> Vec<u64> {
@@ -71,7 +71,7 @@ pub fn push_issue_id(env: &Env, issue_id: u64) {
     env.storage().persistent().set(&key, &ids);
     env.storage()
         .persistent()
-        .extend_ttl(&key, TTL_LEDGERS, TTL_LEDGERS);
+        .extend_ttl(&key, TTL_THRESHOLD_LEDGERS, TTL_EXTEND_TO_LEDGERS);
 }
 
 pub fn set_issue_ids(env: &Env, ids: &Vec<u64>) {
@@ -79,7 +79,7 @@ pub fn set_issue_ids(env: &Env, ids: &Vec<u64>) {
     env.storage().persistent().set(&key, ids);
     env.storage()
         .persistent()
-        .extend_ttl(&key, TTL_LEDGERS, TTL_LEDGERS);
+        .extend_ttl(&key, TTL_THRESHOLD_LEDGERS, TTL_EXTEND_TO_LEDGERS);
 }
 
 pub fn get_admin(env: &Env) -> Option<Address> {
@@ -92,5 +92,5 @@ pub fn set_admin(env: &Env, admin: &Address) {
     env.storage().persistent().set(&key, admin);
     env.storage()
         .persistent()
-        .extend_ttl(&key, TTL_LEDGERS, TTL_LEDGERS);
+        .extend_ttl(&key, TTL_THRESHOLD_LEDGERS, TTL_EXTEND_TO_LEDGERS);
 }

@@ -14,7 +14,8 @@ mod test;
 use error::ContractError;
 use types::{BalanceInfo, EscrowState, Milestone, MilestoneStatus, PayoutTarget};
 
-pub const CCTP_TOKEN_MESSENGER_MINTER: &str = "CAE2G5Z77UP7GYPYGFOWFGW7C7J6I4YP2AFGSADRKQY62SYUFLPNFTXL";
+pub const CCTP_TOKEN_MESSENGER_MINTER: &str =
+    "CAE2G5Z77UP7GYPYGFOWFGW7C7J6I4YP2AFGSADRKQY62SYUFLPNFTXL";
 
 fn is_supported_domain(domain: u32) -> bool {
     // Ethereum: 0, Avalanche: 1, Arbitrum: 3, Solana: 5, Base: 6, Polygon PoS: 7, Starknet: 25
@@ -41,14 +42,15 @@ fn route_payout(
             if recipient.iter().all(|b| b == 0) {
                 return Err(ContractError::EmptyRecipient);
             }
-            
+
             let effective_burn_amount = amount / 10;
             if effective_burn_amount == 0 {
                 return Err(ContractError::ZeroBurnAmount);
             }
 
-            let cctp_address = Address::from_string(&String::from_str(env, CCTP_TOKEN_MESSENGER_MINTER));
-            
+            let cctp_address =
+                Address::from_string(&String::from_str(env, CCTP_TOKEN_MESSENGER_MINTER));
+
             use soroban_sdk::IntoVal;
             env.invoke_contract::<u64>(
                 &cctp_address,
