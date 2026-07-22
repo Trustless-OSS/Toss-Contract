@@ -9,6 +9,23 @@ use crate::types::MilestoneStatus;
 use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
 use soroban_sdk::{token, Address, Env, String, Vec};
 
+#[soroban_sdk::contract]
+pub struct MockCctpContract;
+
+#[soroban_sdk::contractimpl]
+impl MockCctpContract {
+    pub fn deposit_for_burn(
+        env: Env,
+        amount: i128,
+        destination_domain: u32,
+        mint_recipient: soroban_sdk::BytesN<32>,
+        mint_token: Address,
+    ) -> u64 {
+        // Just return a dummy value
+        1
+    }
+}
+
 fn setup_env() -> (Env, soroban_sdk::Address) {
     let env = Env::default();
     env.ledger().set(LedgerInfo {
@@ -22,6 +39,11 @@ fn setup_env() -> (Env, soroban_sdk::Address) {
         max_entry_ttl: 200000,
     });
     let contract_id = env.register_contract(None, TrustlessOssContract);
+    
+    // Register mock CCTP contract
+    let cctp_address = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, cctp::CCTP_TOKEN_MESSENGER_MINTER));
+    env.register_contract(Some(&cctp_address), MockCctpContract);
+
     (env, contract_id)
 }
 
@@ -860,7 +882,7 @@ fn test_cctp_zero_burn_amount() {
             title: String::from_str(&setup.env, "CCTP zero burn amount"),
             reward: 5, // < 10 stroops, normalizes to 0
             contributor: PayoutTarget::Cctp(
-                0,
+                5,
                 soroban_sdk::BytesN::from_array(&setup.env, &[1; 32]),
             ),
             status: MilestoneStatus::Active,
@@ -877,4 +899,135 @@ fn test_cctp_zero_burn_amount() {
 
     let result = setup.client.try_release_funds(&4);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroBurnAmount);
+}
+
+#[test]
+fn test_cctp_release_exact_multiple() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    let mut valid_recipient = [0u8; 32];
+    valid_recipient[31] = 1; // Domain 0 (Ethereum), valid padding
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let milestone = Milestone {
+            issue_id: 5,
+            title: String::from_str(&setup.env, "CCTP exact multiple"),
+            reward: 500, // exact multiple of 10
+            contributor: PayoutTarget::Cctp(
+                0,
+                soroban_sdk::BytesN::from_array(&setup.env, &valid_recipient),
+            ),
+            status: MilestoneStatus::Active,
+            created_at: 100,
+            released_at: None,
+            actual_released: 0,
+        };
+        storage::set_milestone(&setup.env, 5, &milestone);
+
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.reserved += 500;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    setup.client.try_release_funds(&5).unwrap().unwrap();
+
+    let milestone = setup.client.get_milestone(&5);
+    assert_eq!(milestone.status, MilestoneStatus::Released);
+    assert_eq!(milestone.actual_released, 500);
+
+    let escrow = setup.client.get_escrow();
+    assert_eq!(escrow.reserved, 0);
+    assert_eq!(escrow.total_released, 500);
+}
+
+#[test]
+fn test_cctp_release_non_multiple() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    let mut valid_recipient = [0u8; 32];
+    valid_recipient[31] = 1;
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let milestone = Milestone {
+            issue_id: 6,
+            title: String::from_str(&setup.env, "CCTP non multiple"),
+            reward: 507, // non multiple of 10
+            contributor: PayoutTarget::Cctp(
+                0,
+                soroban_sdk::BytesN::from_array(&setup.env, &valid_recipient),
+            ),
+            status: MilestoneStatus::Active,
+            created_at: 100,
+            released_at: None,
+            actual_released: 0,
+        };
+        storage::set_milestone(&setup.env, 6, &milestone);
+
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.reserved += 507;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    setup.client.try_release_funds(&6).unwrap().unwrap();
+
+    let milestone = setup.client.get_milestone(&6);
+    assert_eq!(milestone.status, MilestoneStatus::Released);
+    assert_eq!(milestone.actual_released, 500);
+
+    let escrow = setup.client.get_escrow();
+    assert_eq!(escrow.reserved, 0);
+    assert_eq!(escrow.total_released, 500);
+    
+    // Remaining 7 stroops stays in the available balance.
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.available, 500); // 1000 total deposited - 0 reserved - 500 total_released = 500
+
+}
+
+#[test]
+fn test_cctp_invalid_padding() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    let mut invalid_recipient = [0u8; 32];
+    invalid_recipient[0] = 1; // Domain 0 (Ethereum), invalid padding
+
+    let result = setup.client.try_assign_contributor(&1, &PayoutTarget::Cctp(
+        0,
+        soroban_sdk::BytesN::from_array(&setup.env, &invalid_recipient),
+    ));
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::InvalidCctpRecipientPadding);
+}
+
+#[test]
+fn test_cctp_valid_solana_recipient() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    let mut solana_recipient = [1u8; 32]; // non-zero high bytes
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let milestone = Milestone {
+            issue_id: 1,
+            title: String::from_str(&setup.env, "Solana recipient"),
+            reward: 500,
+            contributor: PayoutTarget::None,
+            status: MilestoneStatus::Pending,
+            created_at: 100,
+            released_at: None,
+            actual_released: 0,
+        };
+        storage::set_milestone(&setup.env, 1, &milestone);
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.reserved += 500;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    let result = setup.client.try_assign_contributor(&1, &PayoutTarget::Cctp(
+        5, // Solana domain
+        soroban_sdk::BytesN::from_array(&setup.env, &solana_recipient),
+    ));
+    assert!(result.is_ok());
 }
