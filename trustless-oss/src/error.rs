@@ -33,4 +33,5 @@ pub enum ContractError {
     InvalidDomain = 50,
     EmptyRecipient = 51,
     ZeroBurnAmount = 52,
+    InvalidCctpRecipientPadding = 53,
 }
