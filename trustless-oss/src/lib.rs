@@ -3,6 +3,7 @@
 use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, Env, String, Vec};
 
 pub mod auth;
+pub mod cctp;
 pub mod error;
 pub mod events;
 pub mod storage;
@@ -14,13 +15,6 @@ mod test;
 use error::ContractError;
 use types::{BalanceInfo, EscrowState, Milestone, MilestoneStatus, PayoutTarget};
 
-pub const CCTP_TOKEN_MESSENGER_MINTER: &str =
-    "CAE2G5Z77UP7GYPYGFOWFGW7C7J6I4YP2AFGSADRKQY62SYUFLPNFTXL";
-
-fn is_supported_domain(domain: u32) -> bool {
-    // Ethereum: 0, Avalanche: 1, Arbitrum: 3, Solana: 5, Base: 6, Polygon PoS: 7, Starknet: 25
-    matches!(domain, 0 | 1 | 3 | 5 | 6 | 7 | 25)
-}
 
 fn route_payout(
     env: &Env,
@@ -36,32 +30,37 @@ fn route_payout(
             Ok(())
         }
         PayoutTarget::Cctp(destination_domain, recipient) => {
-            if !is_supported_domain(*destination_domain) {
+            if !cctp::is_supported_domain(*destination_domain) {
                 return Err(ContractError::InvalidDomain);
             }
             if recipient.iter().all(|b| b == 0) {
                 return Err(ContractError::EmptyRecipient);
             }
+            if !cctp::has_valid_padding(*destination_domain, recipient) {
+                return Err(ContractError::InvalidCctpRecipientPadding);
+            }
 
-            let effective_burn_amount = amount / 10;
-            if effective_burn_amount == 0 {
+            if amount == 0 {
                 return Err(ContractError::ZeroBurnAmount);
             }
 
             let cctp_address =
-                Address::from_string(&String::from_str(env, CCTP_TOKEN_MESSENGER_MINTER));
+                Address::from_string(&String::from_str(env, cctp::CCTP_TOKEN_MESSENGER_MINTER));
 
-            use soroban_sdk::IntoVal;
-            env.invoke_contract::<u64>(
+            let token_client = token::Client::new(env, token);
+            token_client.approve(
+                &env.current_contract_address(),
                 &cctp_address,
-                &soroban_sdk::Symbol::new(env, "deposit_for_burn"),
-                soroban_sdk::vec![
-                    env,
-                    amount.into_val(env),
-                    (*destination_domain).into_val(env),
-                    recipient.clone().into_val(env),
-                    token.clone().into_val(env),
-                ],
+                &amount,
+                &(env.ledger().sequence() + 100),
+            );
+
+            let cctp_client = cctp::CctpClient::new(env, &cctp_address);
+            cctp_client.deposit_for_burn(
+                &amount,
+                destination_domain,
+                recipient,
+                token,
             );
 
             Ok(())
@@ -223,6 +222,18 @@ impl TrustlessOssContract {
         issue_id: u64,
         contributor: PayoutTarget,
     ) -> Result<(), ContractError> {
+        if let PayoutTarget::Cctp(domain, ref recipient) = contributor {
+            if !cctp::is_supported_domain(domain) {
+                return Err(ContractError::InvalidDomain);
+            }
+            if recipient.iter().all(|b| b == 0) {
+                return Err(ContractError::EmptyRecipient);
+            }
+            if !cctp::has_valid_padding(domain, recipient) {
+                return Err(ContractError::InvalidCctpRecipientPadding);
+            }
+        }
+
         let escrow = storage::get_escrow(&env)?;
         auth::require_maintainer(&escrow);
         auth::require_active(&env, &escrow);
@@ -248,6 +259,18 @@ impl TrustlessOssContract {
         issue_id: u64,
         new_contributor: PayoutTarget,
     ) -> Result<(), ContractError> {
+        if let PayoutTarget::Cctp(domain, ref recipient) = new_contributor {
+            if !cctp::is_supported_domain(domain) {
+                return Err(ContractError::InvalidDomain);
+            }
+            if recipient.iter().all(|b| b == 0) {
+                return Err(ContractError::EmptyRecipient);
+            }
+            if !cctp::has_valid_padding(domain, recipient) {
+                return Err(ContractError::InvalidCctpRecipientPadding);
+            }
+        }
+
         let escrow = storage::get_escrow(&env)?;
         auth::require_maintainer(&escrow);
         auth::require_active(&env, &escrow);
@@ -280,18 +303,21 @@ impl TrustlessOssContract {
 
         let reward = milestone.reward;
         let contributor = milestone.contributor.clone();
-        if contributor == PayoutTarget::None {
-            return Err(ContractError::ContributorNotSet);
-        }
+        
+        let release_amount = match contributor {
+            PayoutTarget::Stellar(_) => reward,
+            PayoutTarget::Cctp(_, _) => cctp::truncate_to_6_decimals(reward),
+            PayoutTarget::None => return Err(ContractError::ContributorNotSet),
+        };
 
         escrow.reserved -= reward;
-        escrow.total_released += reward;
+        escrow.total_released += release_amount;
 
         milestone.status = MilestoneStatus::Released;
-        milestone.actual_released = reward;
+        milestone.actual_released = release_amount;
         milestone.released_at = Some(env.ledger().timestamp());
 
-        route_payout(&env, &escrow.token, &contributor, reward)?;
+        route_payout(&env, &escrow.token, &contributor, release_amount)?;
 
         storage::set_escrow(&env, &escrow);
         storage::set_milestone(&env, issue_id, &milestone);
@@ -322,28 +348,31 @@ impl TrustlessOssContract {
         }
 
         let contributor = milestone.contributor.clone();
-        if contributor == PayoutTarget::None {
-            return Err(ContractError::ContributorNotSet);
-        }
+
+        let actual_release_amount = match contributor {
+            PayoutTarget::Stellar(_) => release_amount,
+            PayoutTarget::Cctp(_, _) => cctp::truncate_to_6_decimals(release_amount),
+            PayoutTarget::None => return Err(ContractError::ContributorNotSet),
+        };
 
         escrow.reserved -= milestone.reward;
-        escrow.total_released += release_amount;
+        escrow.total_released += actual_release_amount;
 
         milestone.status = MilestoneStatus::Released;
-        milestone.actual_released = release_amount;
+        milestone.actual_released = actual_release_amount;
         milestone.released_at = Some(env.ledger().timestamp());
 
-        route_payout(&env, &escrow.token, &contributor, release_amount)?;
+        route_payout(&env, &escrow.token, &contributor, actual_release_amount)?;
 
         storage::set_escrow(&env, &escrow);
         storage::set_milestone(&env, issue_id, &milestone);
 
-        let returned_to_pool = milestone.reward - release_amount;
+        let returned_to_pool = milestone.reward - actual_release_amount;
         events::emit_partial_release(
             &env,
             issue_id,
             contributor,
-            release_amount,
+            actual_release_amount,
             returned_to_pool,
         );
 
