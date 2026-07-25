@@ -1,4 +1,4 @@
-# 🪙 TOSS — Trustless Open-Source Sponsorship
+<img width="4500" height="1100" alt="TOSS-Banner" src="https://github.com/user-attachments/assets/d41757e4-5123-41c1-a8b0-09b53176f6d2" />
 
 <div align="center">
 
