@@ -1031,3 +1031,395 @@ fn test_cctp_valid_solana_recipient() {
     ));
     assert!(result.is_ok());
 }
+
+// ---------------------------------------------------------------------------
+// End-to-End Milestone Lifecycle Tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_e2e_full_release_flow() {
+    let setup = setup_funding_env(10_000_000);
+    let token_client = token::Client::new(&setup.env, &setup.token);
+    let contributor = Address::generate(&setup.env);
+
+    setup.client.try_deposit_funds(&10_000_000).unwrap().unwrap();
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "Milestone 1"), &4_000_000)
+        .unwrap()
+        .unwrap();
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 4_000_000);
+    assert_eq!(balance.available, 6_000_000);
+
+    setup.client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor.clone()))
+        .unwrap()
+        .unwrap();
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.status, MilestoneStatus::Active);
+
+    setup.client.try_release_funds(&1).unwrap().unwrap();
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.status, MilestoneStatus::Released);
+    assert_eq!(milestone.actual_released, 4_000_000);
+    assert!(milestone.released_at.is_some());
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 0);
+    assert_eq!(balance.available, 6_000_000);
+    assert_eq!(balance.total_released, 4_000_000);
+
+    assert_eq!(token_client.balance(&contributor), 4_000_000);
+    assert_eq!(token_client.balance(&setup.contract_id), 6_000_000);
+}
+
+#[test]
+fn test_e2e_partial_release_flow() {
+    let setup = setup_funding_env(10_000_000);
+    let token_client = token::Client::new(&setup.env, &setup.token);
+    let contributor = Address::generate(&setup.env);
+
+    setup.client.try_deposit_funds(&10_000_000).unwrap().unwrap();
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "Milestone 1"), &4_000_000)
+        .unwrap()
+        .unwrap();
+
+    setup.client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor.clone()))
+        .unwrap()
+        .unwrap();
+
+    setup.client.try_partial_release(&1, &3_000_000).unwrap().unwrap();
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.status, MilestoneStatus::Released);
+    assert_eq!(milestone.actual_released, 3_000_000);
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 0);
+    assert_eq!(balance.available, 7_000_000);
+    assert_eq!(balance.total_released, 3_000_000);
+
+    assert_eq!(token_client.balance(&contributor), 3_000_000);
+    assert_eq!(token_client.balance(&setup.contract_id), 7_000_000);
+}
+
+#[test]
+fn test_e2e_reassign_then_release() {
+    let setup = setup_funding_env(10_000_000);
+    let token_client = token::Client::new(&setup.env, &setup.token);
+    let contributor1 = Address::generate(&setup.env);
+    let contributor2 = Address::generate(&setup.env);
+
+    setup.client.try_deposit_funds(&10_000_000).unwrap().unwrap();
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "Milestone 1"), &4_000_000)
+        .unwrap()
+        .unwrap();
+
+    setup.client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor1.clone()))
+        .unwrap()
+        .unwrap();
+
+    setup.client
+        .try_reassign_contributor(&1, &PayoutTarget::Stellar(contributor2.clone()))
+        .unwrap()
+        .unwrap();
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.contributor, PayoutTarget::Stellar(contributor2.clone()));
+
+    setup.client.try_release_funds(&1).unwrap().unwrap();
+
+    assert_eq!(token_client.balance(&contributor1), 0);
+    assert_eq!(token_client.balance(&contributor2), 4_000_000);
+    assert_eq!(token_client.balance(&setup.contract_id), 6_000_000);
+}
+
+#[test]
+fn test_e2e_cancel_from_pending_flow() {
+    let setup = setup_funding_env(10_000_000);
+
+    setup.client.try_deposit_funds(&10_000_000).unwrap().unwrap();
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "Milestone 1"), &4_000_000)
+        .unwrap()
+        .unwrap();
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 4_000_000);
+    assert_eq!(balance.available, 6_000_000);
+
+    setup.client.try_cancel_milestone(&1).unwrap().unwrap();
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.status, MilestoneStatus::Cancelled);
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 0);
+    assert_eq!(balance.available, 10_000_000);
+}
+
+#[test]
+fn test_e2e_cancel_from_active_flow() {
+    let setup = setup_funding_env(10_000_000);
+    let contributor = Address::generate(&setup.env);
+
+    setup.client.try_deposit_funds(&10_000_000).unwrap().unwrap();
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "Milestone 1"), &4_000_000)
+        .unwrap()
+        .unwrap();
+    setup.client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor))
+        .unwrap()
+        .unwrap();
+
+    setup.client.try_cancel_milestone(&1).unwrap().unwrap();
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.status, MilestoneStatus::Cancelled);
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 0);
+    assert_eq!(balance.available, 10_000_000);
+}
+
+#[test]
+fn test_e2e_multiple_milestones_accounting() {
+    let setup = setup_funding_env(10_000_000);
+    let contributor1 = Address::generate(&setup.env);
+    let contributor2 = Address::generate(&setup.env);
+
+    setup.client.try_deposit_funds(&10_000_000).unwrap().unwrap();
+
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "M1"), &2_000_000)
+        .unwrap()
+        .unwrap();
+    setup.client
+        .try_create_milestone(&2, &String::from_str(&setup.env, "M2"), &3_000_000)
+        .unwrap()
+        .unwrap();
+    setup.client
+        .try_create_milestone(&3, &String::from_str(&setup.env, "M3"), &4_000_000)
+        .unwrap()
+        .unwrap();
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 9_000_000);
+    assert_eq!(balance.available, 1_000_000);
+
+    setup.client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor1))
+        .unwrap()
+        .unwrap();
+    setup.client.try_release_funds(&1).unwrap().unwrap();
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 7_000_000);
+    assert_eq!(balance.total_released, 2_000_000);
+    assert_eq!(balance.available, 1_000_000);
+
+    setup.client
+        .try_assign_contributor(&2, &PayoutTarget::Stellar(contributor2))
+        .unwrap()
+        .unwrap();
+    setup.client.try_partial_release(&2, &1_500_000).unwrap().unwrap();
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 4_000_000);
+    assert_eq!(balance.total_released, 3_500_000);
+    assert_eq!(balance.available, 2_500_000);
+
+    setup.client.try_cancel_milestone(&3).unwrap().unwrap();
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 0);
+    assert_eq!(balance.total_released, 3_500_000);
+    assert_eq!(balance.available, 6_500_000);
+}
+
+#[test]
+fn test_e2e_deposit_after_milestones_created() {
+    let setup = setup_funding_env(10_000_000);
+    setup.client.try_deposit_funds(&5_000_000).unwrap().unwrap();
+
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "M1"), &3_000_000)
+        .unwrap()
+        .unwrap();
+
+    let balance_before = setup.client.get_balance();
+    assert_eq!(balance_before.reserved, 3_000_000);
+    assert_eq!(balance_before.available, 2_000_000);
+
+    let sac = token::StellarAssetClient::new(&setup.env, &setup.token);
+    sac.mint(&setup.maintainer, &5_000_000);
+    setup.client.try_deposit_funds(&5_000_000).unwrap().unwrap();
+
+    let balance_after = setup.client.get_balance();
+    assert_eq!(balance_after.reserved, 3_000_000);
+    assert_eq!(balance_after.available, 7_000_000);
+}
+
+#[test]
+fn test_e2e_withdraw_up_to_reserved_boundary() {
+    let setup = setup_funding_env(10_000_000);
+    setup.client.try_deposit_funds(&10_000_000).unwrap().unwrap();
+
+    setup.client
+        .try_create_milestone(&1, &String::from_str(&setup.env, "M1"), &6_000_000)
+        .unwrap()
+        .unwrap();
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.available, 4_000_000);
+
+    let result = setup.client.try_withdraw_funds(&4_000_001);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::WithdrawExceedsAvailable);
+
+    let result_ok = setup.client.try_withdraw_funds(&4_000_000);
+    assert!(result_ok.is_ok());
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.available, 0);
+    assert_eq!(balance.total_deposited, 6_000_000);
+}
+
+#[test]
+fn test_e2e_event_sequence_check() {
+    use soroban_sdk::TryFromVal;
+    
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let maintainer = Address::generate(&env);
+    let platform = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token = token_contract.address();
+    let contributor = Address::generate(&env);
+
+    // 1. EscrowInitialized
+    c.try_initialize(&1, &maintainer, &platform, &token).unwrap().unwrap();
+    {
+        let init_events = env.events().all();
+        let mut escrow_init_event = None;
+        for event in init_events {
+            if event.0 == contract_id {
+                escrow_init_event = Some((event.1, event.2));
+            }
+        }
+        let (topics, payload) = escrow_init_event.unwrap();
+        let event_type = events::DataKey::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
+        let repo_id = u64::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
+        let maintainer_val = Address::try_from_val(&env, &topics.get(2).unwrap()).unwrap();
+        
+        assert_eq!(event_type, events::DataKey::EscrowInitialized);
+        assert_eq!(repo_id, 1);
+        assert_eq!(maintainer_val, maintainer);
+        assert_eq!(<()>::try_from_val(&env, &payload).unwrap(), ());
+    }
+
+    // Mint token for maintainer
+    let sac = token::StellarAssetClient::new(&env, &token);
+    sac.mint(&maintainer, &10_000_000);
+
+    // 2. FundsDeposited
+    c.try_deposit_funds(&10_000_000).unwrap().unwrap();
+    {
+        let deposit_events = env.events().all();
+        let mut deposit_event = None;
+        for event in deposit_events {
+            if event.0 == contract_id {
+                deposit_event = Some((event.1, event.2));
+            }
+        }
+        let (topics, payload) = deposit_event.unwrap();
+        let event_type = events::DataKey::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
+        let amount = i128::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
+        let new_total = i128::try_from_val(&env, &topics.get(2).unwrap()).unwrap();
+        
+        assert_eq!(event_type, events::DataKey::FundsDeposited);
+        assert_eq!(amount, 10_000_000);
+        assert_eq!(new_total, 10_000_000);
+        assert_eq!(<()>::try_from_val(&env, &payload).unwrap(), ());
+    }
+
+    // 3. MilestoneCreated
+    c.try_create_milestone(&1, &String::from_str(&env, "Milestone 1"), &4_000_000)
+        .unwrap()
+        .unwrap();
+    {
+        let create_events = env.events().all();
+        let mut create_event = None;
+        for event in create_events {
+            if event.0 == contract_id {
+                create_event = Some((event.1, event.2));
+            }
+        }
+        let (topics, payload) = create_event.unwrap();
+        let event_type = events::DataKey::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
+        let issue_id = u64::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
+        let reward = i128::try_from_val(&env, &topics.get(2).unwrap()).unwrap();
+        
+        assert_eq!(event_type, events::DataKey::MilestoneCreated);
+        assert_eq!(issue_id, 1);
+        assert_eq!(reward, 4_000_000);
+        assert_eq!(<()>::try_from_val(&env, &payload).unwrap(), ());
+    }
+
+    // 4. ContributorAssigned
+    c.try_assign_contributor(&1, &PayoutTarget::Stellar(contributor.clone()))
+        .unwrap()
+        .unwrap();
+    {
+        let assign_events = env.events().all();
+        let mut assign_event = None;
+        for event in assign_events {
+            if event.0 == contract_id {
+                assign_event = Some((event.1, event.2));
+            }
+        }
+        let (topics, payload) = assign_event.unwrap();
+        let event_type = events::DataKey::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
+        let issue_id = u64::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
+        let contributor_val = PayoutTarget::try_from_val(&env, &topics.get(2).unwrap()).unwrap();
+        
+        assert_eq!(event_type, events::DataKey::ContributorAssigned);
+        assert_eq!(issue_id, 1);
+        assert_eq!(contributor_val, PayoutTarget::Stellar(contributor.clone()));
+        assert_eq!(<()>::try_from_val(&env, &payload).unwrap(), ());
+    }
+
+    // 5. FundsReleased
+    c.try_release_funds(&1).unwrap().unwrap();
+    {
+        let release_events = env.events().all();
+        let mut release_event = None;
+        for event in release_events {
+            if event.0 == contract_id {
+                release_event = Some((event.1, event.2));
+            }
+        }
+        let (topics, payload) = release_event.unwrap();
+        let event_type = events::DataKey::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
+        let issue_id = u64::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
+        let contributor_val = PayoutTarget::try_from_val(&env, &topics.get(2).unwrap()).unwrap();
+        let amount = i128::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+        
+        assert_eq!(event_type, events::DataKey::FundsReleased);
+        assert_eq!(issue_id, 1);
+        assert_eq!(contributor_val, PayoutTarget::Stellar(contributor));
+        assert_eq!(amount, 4_000_000);
+        assert_eq!(<()>::try_from_val(&env, &payload).unwrap(), ());
+    }
+}
+

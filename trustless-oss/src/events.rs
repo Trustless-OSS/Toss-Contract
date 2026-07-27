@@ -2,6 +2,7 @@ use crate::types::PayoutTarget;
 use soroban_sdk::{contracttype, Address, Env};
 
 #[contracttype]
+#[derive(Clone, Debug, PartialEq)]
 pub enum DataKey {
     EscrowInitialized,
     FundsDeposited,
