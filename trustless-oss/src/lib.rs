@@ -15,7 +15,6 @@ mod test;
 use error::ContractError;
 use types::{BalanceInfo, EscrowState, Milestone, MilestoneStatus, PayoutTarget};
 
-
 fn route_payout(
     env: &Env,
     token: &Address,
@@ -56,12 +55,7 @@ fn route_payout(
             );
 
             let cctp_client = cctp::CctpClient::new(env, &cctp_address);
-            cctp_client.deposit_for_burn(
-                &amount,
-                destination_domain,
-                recipient,
-                token,
-            );
+            cctp_client.deposit_for_burn(&amount, destination_domain, recipient, token);
 
             Ok(())
         }
@@ -303,7 +297,7 @@ impl TrustlessOssContract {
 
         let reward = milestone.reward;
         let contributor = milestone.contributor.clone();
-        
+
         let release_amount = match contributor {
             PayoutTarget::Stellar(_) => reward,
             PayoutTarget::Cctp(_, _) => cctp::truncate_to_6_decimals(reward),

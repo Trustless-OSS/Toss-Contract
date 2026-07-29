@@ -39,9 +39,12 @@ fn setup_env() -> (Env, soroban_sdk::Address) {
         max_entry_ttl: 200000,
     });
     let contract_id = env.register_contract(None, TrustlessOssContract);
-    
+
     // Register mock CCTP contract
-    let cctp_address = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, cctp::CCTP_TOKEN_MESSENGER_MINTER));
+    let cctp_address = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(
+        &env,
+        cctp::CCTP_TOKEN_MESSENGER_MINTER,
+    ));
     env.register_contract(Some(&cctp_address), MockCctpContract);
 
     (env, contract_id)
@@ -979,11 +982,10 @@ fn test_cctp_release_non_multiple() {
     let escrow = setup.client.get_escrow();
     assert_eq!(escrow.reserved, 0);
     assert_eq!(escrow.total_released, 500);
-    
+
     // Remaining 7 stroops stays in the available balance.
     let balance = setup.client.get_balance();
     assert_eq!(balance.available, 500); // 1000 total deposited - 0 reserved - 500 total_released = 500
-
 }
 
 #[test]
@@ -994,11 +996,17 @@ fn test_cctp_invalid_padding() {
     let mut invalid_recipient = [0u8; 32];
     invalid_recipient[0] = 1; // Domain 0 (Ethereum), invalid padding
 
-    let result = setup.client.try_assign_contributor(&1, &PayoutTarget::Cctp(
-        0,
-        soroban_sdk::BytesN::from_array(&setup.env, &invalid_recipient),
-    ));
-    assert_eq!(result.unwrap_err().unwrap(), ContractError::InvalidCctpRecipientPadding);
+    let result = setup.client.try_assign_contributor(
+        &1,
+        &PayoutTarget::Cctp(
+            0,
+            soroban_sdk::BytesN::from_array(&setup.env, &invalid_recipient),
+        ),
+    );
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::InvalidCctpRecipientPadding
+    );
 }
 
 #[test]
@@ -1025,10 +1033,13 @@ fn test_cctp_valid_solana_recipient() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    let result = setup.client.try_assign_contributor(&1, &PayoutTarget::Cctp(
-        5, // Solana domain
-        soroban_sdk::BytesN::from_array(&setup.env, &solana_recipient),
-    ));
+    let result = setup.client.try_assign_contributor(
+        &1,
+        &PayoutTarget::Cctp(
+            5, // Solana domain
+            soroban_sdk::BytesN::from_array(&setup.env, &solana_recipient),
+        ),
+    );
     assert!(result.is_ok());
 }
 
