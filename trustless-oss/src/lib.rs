@@ -15,7 +15,6 @@ mod test;
 use error::ContractError;
 use types::{BalanceInfo, EscrowState, Milestone, MilestoneStatus, PayoutTarget};
 
-
 fn route_payout(
     env: &Env,
     token: &Address,
@@ -56,12 +55,7 @@ fn route_payout(
             );
 
             let cctp_client = cctp::CctpClient::new(env, &cctp_address);
-            cctp_client.deposit_for_burn(
-                &amount,
-                destination_domain,
-                recipient,
-                token,
-            );
+            cctp_client.deposit_for_burn(&amount, destination_domain, recipient, token);
 
             Ok(())
         }
@@ -303,7 +297,7 @@ impl TrustlessOssContract {
 
         let reward = milestone.reward;
         let contributor = milestone.contributor.clone();
-        
+
         let release_amount = match contributor {
             PayoutTarget::Stellar(_) => reward,
             PayoutTarget::Cctp(_, _) => cctp::truncate_to_6_decimals(reward),
@@ -399,6 +393,49 @@ impl TrustlessOssContract {
         storage::set_milestone(&env, issue_id, &milestone);
 
         events::emit_milestone_cancelled(&env, issue_id);
+
+        Ok(())
+    }
+
+    /// Transfers the stored admin to a new address.
+    pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), ContractError> {
+        let admin = storage::get_admin(&env).ok_or(ContractError::NotAdmin)?;
+        auth::require_admin(&admin);
+        let escrow = storage::get_escrow(&env)?;
+        auth::require_active(&env, &escrow);
+
+        storage::set_admin(&env, &new_admin);
+        events::emit_admin_transferred(&env, admin, new_admin);
+
+        Ok(())
+    }
+
+    /// Updates the platform address on the escrow.
+    pub fn update_platform(env: Env, new_platform: Address) -> Result<(), ContractError> {
+        let admin = storage::get_admin(&env).ok_or(ContractError::NotAdmin)?;
+        auth::require_admin(&admin);
+        let mut escrow = storage::get_escrow(&env)?;
+        auth::require_active(&env, &escrow);
+
+        let old_platform = escrow.platform.clone();
+        escrow.platform = new_platform.clone();
+        storage::set_escrow(&env, &escrow);
+        events::emit_platform_updated(&env, old_platform, new_platform);
+
+        Ok(())
+    }
+
+    /// Updates the maintainer address on the escrow.
+    pub fn update_maintainer(env: Env, new_maintainer: Address) -> Result<(), ContractError> {
+        let admin = storage::get_admin(&env).ok_or(ContractError::NotAdmin)?;
+        auth::require_admin(&admin);
+        let mut escrow = storage::get_escrow(&env)?;
+        auth::require_active(&env, &escrow);
+
+        let old_maintainer = escrow.maintainer.clone();
+        escrow.maintainer = new_maintainer.clone();
+        storage::set_escrow(&env, &escrow);
+        events::emit_maintainer_updated(&env, old_maintainer, new_maintainer);
 
         Ok(())
     }

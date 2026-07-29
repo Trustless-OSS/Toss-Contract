@@ -39,9 +39,12 @@ fn setup_env() -> (Env, soroban_sdk::Address) {
         max_entry_ttl: 200000,
     });
     let contract_id = env.register_contract(None, TrustlessOssContract);
-    
+
     // Register mock CCTP contract
-    let cctp_address = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, cctp::CCTP_TOKEN_MESSENGER_MINTER));
+    let cctp_address = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(
+        &env,
+        cctp::CCTP_TOKEN_MESSENGER_MINTER,
+    ));
     env.register_contract(Some(&cctp_address), MockCctpContract);
 
     (env, contract_id)
@@ -979,11 +982,10 @@ fn test_cctp_release_non_multiple() {
     let escrow = setup.client.get_escrow();
     assert_eq!(escrow.reserved, 0);
     assert_eq!(escrow.total_released, 500);
-    
+
     // Remaining 7 stroops stays in the available balance.
     let balance = setup.client.get_balance();
     assert_eq!(balance.available, 500); // 1000 total deposited - 0 reserved - 500 total_released = 500
-
 }
 
 #[test]
@@ -994,11 +996,17 @@ fn test_cctp_invalid_padding() {
     let mut invalid_recipient = [0u8; 32];
     invalid_recipient[0] = 1; // Domain 0 (Ethereum), invalid padding
 
-    let result = setup.client.try_assign_contributor(&1, &PayoutTarget::Cctp(
-        0,
-        soroban_sdk::BytesN::from_array(&setup.env, &invalid_recipient),
-    ));
-    assert_eq!(result.unwrap_err().unwrap(), ContractError::InvalidCctpRecipientPadding);
+    let result = setup.client.try_assign_contributor(
+        &1,
+        &PayoutTarget::Cctp(
+            0,
+            soroban_sdk::BytesN::from_array(&setup.env, &invalid_recipient),
+        ),
+    );
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::InvalidCctpRecipientPadding
+    );
 }
 
 #[test]
@@ -1025,9 +1033,210 @@ fn test_cctp_valid_solana_recipient() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    let result = setup.client.try_assign_contributor(&1, &PayoutTarget::Cctp(
-        5, // Solana domain
-        soroban_sdk::BytesN::from_array(&setup.env, &solana_recipient),
-    ));
+    let result = setup.client.try_assign_contributor(
+        &1,
+        &PayoutTarget::Cctp(
+            5, // Solana domain
+            soroban_sdk::BytesN::from_array(&setup.env, &solana_recipient),
+        ),
+    );
     assert!(result.is_ok());
+}
+
+// ---------------------------------------------------------------------------
+// admin rotation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_transfer_admin_success() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap();
+
+    let new_admin = Address::generate(&env);
+    let result = c.try_transfer_admin(&new_admin);
+    assert!(result.is_ok());
+
+    env.as_contract(&contract_id, || {
+        let stored = storage::get_admin(&env);
+        assert_eq!(stored, Some(new_admin));
+    });
+}
+
+#[test]
+fn test_transfer_admin_emits_event() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
+        .unwrap();
+
+    let new_admin = Address::generate(&env);
+    c.try_transfer_admin(&new_admin).unwrap().unwrap();
+
+    let events = env.events().all();
+    assert!(!events.is_empty());
+}
+
+#[test]
+fn test_update_platform_success() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap();
+
+    let new_platform = Address::generate(&env);
+    let result = c.try_update_platform(&new_platform);
+    assert!(result.is_ok());
+
+    let escrow = c.get_escrow();
+    assert_eq!(escrow.platform, new_platform);
+}
+
+#[test]
+fn test_update_platform_emits_event() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
+        .unwrap();
+
+    let new_platform = Address::generate(&env);
+    c.try_update_platform(&new_platform).unwrap().unwrap();
+
+    let events = env.events().all();
+    assert!(!events.is_empty());
+}
+
+#[test]
+fn test_update_maintainer_success() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap();
+
+    let new_maintainer = Address::generate(&env);
+    let result = c.try_update_maintainer(&new_maintainer);
+    assert!(result.is_ok());
+
+    let escrow = c.get_escrow();
+    assert_eq!(escrow.maintainer, new_maintainer);
+}
+
+#[test]
+fn test_update_maintainer_emits_event() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
+        .unwrap();
+
+    let new_maintainer = Address::generate(&env);
+    c.try_update_maintainer(&new_maintainer).unwrap().unwrap();
+
+    let events = env.events().all();
+    assert!(!events.is_empty());
+}
+
+#[test]
+fn test_old_platform_rejected_after_update() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap();
+
+    let new_platform = Address::generate(&env);
+    c.try_update_platform(&new_platform).unwrap();
+
+    let escrow = c.get_escrow();
+    assert_eq!(escrow.platform, new_platform);
+    assert_ne!(escrow.platform, platform);
+}
+
+#[test]
+fn test_old_maintainer_rejected_after_update() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap();
+
+    let new_maintainer = Address::generate(&env);
+    c.try_update_maintainer(&new_maintainer).unwrap();
+
+    let escrow = c.get_escrow();
+    assert_eq!(escrow.maintainer, new_maintainer);
+    assert_ne!(escrow.maintainer, maintainer);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized function call for address")]
+fn test_transfer_admin_rejects_non_admin() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap();
+
+    env.set_auths(&[]);
+    let new_admin = Address::generate(&env);
+    c.transfer_admin(&new_admin);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized function call for address")]
+fn test_update_platform_rejects_non_admin() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap();
+
+    env.set_auths(&[]);
+    let new_platform = Address::generate(&env);
+    c.update_platform(&new_platform);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized function call for address")]
+fn test_update_maintainer_rejects_non_admin() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap();
+
+    env.set_auths(&[]);
+    let new_maintainer = Address::generate(&env);
+    c.update_maintainer(&new_maintainer);
 }

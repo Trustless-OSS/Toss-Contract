@@ -12,6 +12,9 @@ pub enum DataKey {
     FundsReleased,
     PartialRelease,
     MilestoneCancelled,
+    AdminTransferred,
+    PlatformUpdated,
+    MaintainerUpdated,
 }
 
 pub fn emit_escrow_initialized(env: &Env, repo_id: u64, maintainer: Address) {
@@ -68,5 +71,20 @@ pub fn emit_partial_release(
 
 pub fn emit_milestone_cancelled(env: &Env, issue_id: u64) {
     let topics = (DataKey::MilestoneCancelled, issue_id);
+    env.events().publish(topics, ());
+}
+
+pub fn emit_admin_transferred(env: &Env, old_admin: Address, new_admin: Address) {
+    let topics = (DataKey::AdminTransferred, old_admin, new_admin);
+    env.events().publish(topics, ());
+}
+
+pub fn emit_platform_updated(env: &Env, old_platform: Address, new_platform: Address) {
+    let topics = (DataKey::PlatformUpdated, old_platform, new_platform);
+    env.events().publish(topics, ());
+}
+
+pub fn emit_maintainer_updated(env: &Env, old_maintainer: Address, new_maintainer: Address) {
+    let topics = (DataKey::MaintainerUpdated, old_maintainer, new_maintainer);
     env.events().publish(topics, ());
 }
