@@ -7,6 +7,7 @@ pub enum DataKey {
     FundsDeposited,
     FundsWithdrawn,
     MilestoneCreated,
+    MilestoneUpdated,
     ContributorAssigned,
     ContributorReassigned,
     FundsReleased,
@@ -34,6 +35,11 @@ pub fn emit_funds_withdrawn(env: &Env, amount: i128, new_available: i128) {
 
 pub fn emit_milestone_created(env: &Env, issue_id: u64, reward: i128) {
     let topics = (DataKey::MilestoneCreated, issue_id, reward);
+    env.events().publish(topics, ());
+}
+
+pub fn emit_milestone_updated(env: &Env, issue_id: u64, old_reward: i128, new_reward: i128) {
+    let topics = (DataKey::MilestoneUpdated, issue_id, old_reward, new_reward);
     env.events().publish(topics, ());
 }
 

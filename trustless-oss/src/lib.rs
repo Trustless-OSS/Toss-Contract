@@ -210,6 +210,62 @@ impl TrustlessOssContract {
         Ok(())
     }
 
+    /// Updates the title and reward of a pending milestone before any work begins.
+    ///
+    /// Mirrors `create_milestone`'s authorization: maintainer-only and requires an
+    /// active escrow. Only milestones still in `Pending` status may be edited — once
+    /// a contributor is assigned (`Active`) or the milestone is `Released`/`Cancelled`
+    /// the title and reward are immutable. The `issue_id` itself never changes; this
+    /// is a metadata/reward edit only.
+    ///
+    /// When the reward changes, `escrow.reserved` is adjusted by the delta. A reward
+    /// increase is checked against the currently available balance and rejected with
+    /// `InsufficientBalance` if it doesn't fit; a decrease frees the difference back
+    /// into the available pool.
+    pub fn update_milestone(
+        env: Env,
+        issue_id: u64,
+        title: String,
+        reward: i128,
+    ) -> Result<(), ContractError> {
+        let mut escrow = storage::get_escrow(&env)?;
+        auth::require_maintainer(&escrow);
+        auth::require_active(&env, &escrow);
+
+        if reward <= 0 {
+            panic_with_error!(&env, ContractError::ZeroAmount);
+        }
+
+        let mut milestone = storage::get_milestone(&env, issue_id)?;
+
+        if milestone.status != MilestoneStatus::Pending {
+            return Err(ContractError::MilestoneNotPending);
+        }
+
+        let old_reward = milestone.reward;
+        let delta = reward - old_reward;
+
+        // Only an increase can outgrow the pool; `available` already nets out the
+        // milestone's current reservation, so the extra `delta` must fit on top of it.
+        if delta > 0 {
+            let balance = Self::get_balance(env.clone())?;
+            if delta > balance.available {
+                return Err(ContractError::InsufficientBalance);
+            }
+        }
+
+        escrow.reserved += delta;
+        milestone.title = title;
+        milestone.reward = reward;
+
+        storage::set_escrow(&env, &escrow);
+        storage::set_milestone(&env, issue_id, &milestone);
+
+        events::emit_milestone_updated(&env, issue_id, old_reward, reward);
+
+        Ok(())
+    }
+
     /// Assigns a contributor to a pending milestone and moves it to active status.
     pub fn assign_contributor(
         env: Env,

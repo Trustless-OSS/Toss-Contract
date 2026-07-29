@@ -1240,3 +1240,228 @@ fn test_update_maintainer_rejects_non_admin() {
     let new_maintainer = Address::generate(&env);
     c.update_maintainer(&new_maintainer);
 }
+
+// ---------------------------------------------------------------------------
+// update_milestone
+// ---------------------------------------------------------------------------
+
+/// Funds the escrow with `deposit` and creates a single pending milestone
+/// (`issue_id = 1`) reserving `reward`, returning the ready-to-use setup.
+fn setup_pending_milestone(deposit: i128, reward: i128) -> FundingSetup {
+    let setup = setup_funding_env(deposit);
+    setup.client.try_deposit_funds(&deposit).unwrap().unwrap();
+    let title = String::from_str(&setup.env, "Original title");
+    setup
+        .client
+        .try_create_milestone(&1, &title, &reward)
+        .unwrap()
+        .unwrap();
+    setup
+}
+
+#[test]
+fn test_update_milestone_title_only() {
+    let setup = setup_pending_milestone(1_000, 300);
+
+    let new_title = String::from_str(&setup.env, "Fixed typo in title");
+    setup
+        .client
+        .try_update_milestone(&1, &new_title, &300)
+        .unwrap()
+        .unwrap();
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.title, new_title);
+    assert_eq!(milestone.reward, 300);
+    assert_eq!(milestone.status, MilestoneStatus::Pending);
+
+    // Reward unchanged, so the reservation is untouched.
+    let escrow = setup.client.get_escrow();
+    assert_eq!(escrow.reserved, 300);
+    assert_eq!(setup.client.get_balance().available, 700);
+}
+
+#[test]
+fn test_update_milestone_reward_increase_within_balance() {
+    let setup = setup_pending_milestone(1_000, 300);
+
+    let title = String::from_str(&setup.env, "Bumped reward");
+    setup
+        .client
+        .try_update_milestone(&1, &title, &800)
+        .unwrap()
+        .unwrap();
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.reward, 800);
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 800);
+    assert_eq!(balance.available, 200); // 1000 - 800
+}
+
+#[test]
+fn test_update_milestone_reward_increase_exceeding_balance() {
+    let setup = setup_pending_milestone(1_000, 300);
+
+    // Available is 700 on top of the 300 already reserved; asking for 1_100
+    // (a delta of 800) can't fit.
+    let title = String::from_str(&setup.env, "Too greedy");
+    let result = setup.client.try_update_milestone(&1, &title, &1_100);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::InsufficientBalance
+    );
+
+    // State is left untouched on rejection.
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.reward, 300);
+    assert_eq!(setup.client.get_escrow().reserved, 300);
+}
+
+#[test]
+fn test_update_milestone_reward_decrease_frees_available() {
+    let setup = setup_pending_milestone(1_000, 800);
+    assert_eq!(setup.client.get_balance().available, 200);
+
+    let title = String::from_str(&setup.env, "Trimmed reward");
+    setup
+        .client
+        .try_update_milestone(&1, &title, &500)
+        .unwrap()
+        .unwrap();
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 500);
+    assert_eq!(balance.available, 500); // 300 freed back into the pool
+}
+
+#[test]
+fn test_update_milestone_reward_increase_to_full_available() {
+    let setup = setup_pending_milestone(1_000, 300);
+
+    // Delta of 700 exactly consumes the remaining available balance.
+    let title = String::from_str(&setup.env, "Exact fit");
+    setup
+        .client
+        .try_update_milestone(&1, &title, &1_000)
+        .unwrap()
+        .unwrap();
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 1_000);
+    assert_eq!(balance.available, 0);
+}
+
+#[test]
+fn test_update_milestone_zero_reward_rejected() {
+    let setup = setup_pending_milestone(1_000, 300);
+    let title = String::from_str(&setup.env, "Zero");
+    let result = setup.client.try_update_milestone(&1, &title, &0);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroAmount);
+}
+
+#[test]
+fn test_update_milestone_negative_reward_rejected() {
+    let setup = setup_pending_milestone(1_000, 300);
+    let title = String::from_str(&setup.env, "Negative");
+    let result = setup.client.try_update_milestone(&1, &title, &-50);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroAmount);
+}
+
+#[test]
+fn test_update_milestone_missing_milestone_rejected() {
+    let setup = setup_pending_milestone(1_000, 300);
+    let title = String::from_str(&setup.env, "Ghost");
+    let result = setup.client.try_update_milestone(&99, &title, &100);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::MilestoneNotFound
+    );
+}
+
+#[test]
+fn test_update_milestone_on_active_rejected() {
+    let setup = setup_pending_milestone(1_000, 300);
+    let contributor = Address::generate(&setup.env);
+    setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor))
+        .unwrap()
+        .unwrap();
+
+    let title = String::from_str(&setup.env, "Cannot edit active");
+    let result = setup.client.try_update_milestone(&1, &title, &400);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::MilestoneNotPending
+    );
+}
+
+#[test]
+fn test_update_milestone_on_cancelled_rejected() {
+    let setup = setup_pending_milestone(1_000, 300);
+    setup.client.try_cancel_milestone(&1).unwrap().unwrap();
+
+    let title = String::from_str(&setup.env, "Cannot edit cancelled");
+    let result = setup.client.try_update_milestone(&1, &title, &400);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::MilestoneNotPending
+    );
+}
+
+#[test]
+fn test_update_milestone_on_released_rejected() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+    let contributor = Address::generate(&setup.env);
+
+    // Seed a released milestone directly.
+    setup.env.as_contract(&setup.contract_id, || {
+        let milestone = Milestone {
+            issue_id: 7,
+            title: String::from_str(&setup.env, "Done"),
+            reward: 500,
+            contributor: PayoutTarget::Stellar(contributor),
+            status: MilestoneStatus::Released,
+            created_at: 100,
+            released_at: Some(200),
+            actual_released: 500,
+        };
+        storage::set_milestone(&setup.env, 7, &milestone);
+    });
+
+    let title = String::from_str(&setup.env, "Cannot edit released");
+    let result = setup.client.try_update_milestone(&7, &title, &400);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::MilestoneNotPending
+    );
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized function call for address")]
+fn test_update_milestone_requires_maintainer() {
+    let setup = setup_pending_milestone(1_000, 300);
+    setup.env.set_auths(&[]);
+    let title = String::from_str(&setup.env, "No auth");
+    setup.client.update_milestone(&1, &title, &400);
+}
+
+#[test]
+fn test_update_milestone_emits_event() {
+    let setup = setup_pending_milestone(1_000, 300);
+
+    let title = String::from_str(&setup.env, "With event");
+    setup
+        .client
+        .try_update_milestone(&1, &title, &450)
+        .unwrap()
+        .unwrap();
+
+    // `events().all()` reports the most recent invocation's events; the update
+    // publishes exactly one, the MilestoneUpdated event.
+    let events = setup.env.events().all();
+    assert_eq!(events.len(), 1);
+}
