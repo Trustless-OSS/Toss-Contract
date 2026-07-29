@@ -1,5 +1,5 @@
 use crate::types::EscrowState;
-use soroban_sdk::{panic_with_error, Env};
+use soroban_sdk::{panic_with_error, Address, Env};
 
 pub fn require_platform(escrow: &EscrowState) {
     escrow.platform.require_auth();
@@ -7,6 +7,10 @@ pub fn require_platform(escrow: &EscrowState) {
 
 pub fn require_maintainer(escrow: &EscrowState) {
     escrow.maintainer.require_auth();
+}
+
+pub fn require_admin(admin: &Address) {
+    admin.require_auth();
 }
 
 pub fn require_active(env: &Env, escrow: &EscrowState) {
