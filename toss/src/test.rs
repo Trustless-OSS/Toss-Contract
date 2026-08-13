@@ -38,7 +38,7 @@ fn setup_env() -> (Env, soroban_sdk::Address) {
         min_persistent_entry_ttl: 10000,
         max_entry_ttl: 200000,
     });
-    let contract_id = env.register_contract(None, TrustlessOssContract);
+    let contract_id = env.register_contract(None, TOSSContract);
 
     // Register mock CCTP contract
     let cctp_address = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(
@@ -50,8 +50,8 @@ fn setup_env() -> (Env, soroban_sdk::Address) {
     (env, contract_id)
 }
 
-fn client(env: &Env, contract_id: &soroban_sdk::Address) -> TrustlessOssContractClient<'static> {
-    TrustlessOssContractClient::new(env, contract_id)
+fn client(env: &Env, contract_id: &soroban_sdk::Address) -> TOSSContractClient<'static> {
+    TOSSContractClient::new(env, contract_id)
 }
 
 fn addresses(env: &Env) -> (Address, Address, Address) {
@@ -539,7 +539,7 @@ fn test_partial_release_too_large() {
 struct FundingSetup {
     env: Env,
     contract_id: Address,
-    client: TrustlessOssContractClient<'static>,
+    client: TOSSContractClient<'static>,
     maintainer: Address,
     token: Address,
 }

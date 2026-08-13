@@ -1,5 +1,7 @@
-<img width="4500" height="1100" alt="TOSS-Banner" src="https://github.com/user-attachments/assets/fe3f846b-c68f-41dc-871f-04f82f2b37ef" />
 <div align="center">
+
+
+<img width="280" alt="toss" src="https://github.com/user-attachments/assets/eb15200e-c4c5-4405-aca1-bbb692bd3480" />
 
 **A Soroban smart contract that turns repository funding into transparent, milestone-based USDC payouts.**
 
@@ -59,13 +61,23 @@ flowchart LR
 
 ### Milestone lifecycle
 
-```text
-🆕 Pending ── assign contributor ──▶ ⚡ Active ── release ──▶ ✅ Released
-                                            │
-                                            ├── partial release ──▶ ✅ Released
-                                            └── cancel ──────────▶ 🚫 Cancelled
+```mermaid
+flowchart LR
+  Pending["🆕 Pending"] -->|assign contributor| Active["⚡ Active"]
+  Active -->|release| Released["✅ Released"]
+  Active -->|partial release| Released
+  Active -->|cancel| Cancelled["🚫 Cancelled"]
+  Pending -->|cancel| Cancelled
 
-🆕 Pending ── cancel ───────────────────────────────────────────▶ 🚫 Cancelled
+  classDef pending fill:#fff3bf,stroke:#f08c46,stroke-width:2px,color:#5f370e;
+  classDef active fill:#d0ebff,stroke:#1971c2,stroke-width:2px,color:#0b2e4f;
+  classDef released fill:#d3f9d8,stroke:#2b8a3e,stroke-width:2px,color:#123b1a;
+  classDef cancelled fill:#ffd6d6,stroke:#e03131,stroke-width:2px,color:#6b0b0b;
+
+  class Pending pending;
+  class Active active;
+  class Released released;
+  class Cancelled cancelled;
 ```
 
 > 💡 Creating a milestone reserves its full reward. A cancellation returns the entire reward to the available pool; a partial release returns only the unpaid remainder.

@@ -12,61 +12,15 @@ pub mod types;
 #[cfg(test)]
 mod test;
 
+use cctp::cc_release_fund;
 use error::ContractError;
 use types::{BalanceInfo, EscrowState, Milestone, MilestoneStatus, PayoutTarget};
 
-fn route_payout(
-    env: &Env,
-    token: &Address,
-    target: &PayoutTarget,
-    amount: i128,
-) -> Result<(), ContractError> {
-    match target {
-        PayoutTarget::None => return Err(ContractError::ContributorNotSet),
-        PayoutTarget::Stellar(recipient_address) => {
-            let token_client = token::Client::new(env, token);
-            token_client.transfer(&env.current_contract_address(), recipient_address, &amount);
-            Ok(())
-        }
-        PayoutTarget::Cctp(destination_domain, recipient) => {
-            if !cctp::is_supported_domain(*destination_domain) {
-                return Err(ContractError::InvalidDomain);
-            }
-            if recipient.iter().all(|b| b == 0) {
-                return Err(ContractError::EmptyRecipient);
-            }
-            if !cctp::has_valid_padding(*destination_domain, recipient) {
-                return Err(ContractError::InvalidCctpRecipientPadding);
-            }
-
-            if amount == 0 {
-                return Err(ContractError::ZeroBurnAmount);
-            }
-
-            let cctp_address =
-                Address::from_string(&String::from_str(env, cctp::CCTP_TOKEN_MESSENGER_MINTER));
-
-            let token_client = token::Client::new(env, token);
-            token_client.approve(
-                &env.current_contract_address(),
-                &cctp_address,
-                &amount,
-                &(env.ledger().sequence() + 100),
-            );
-
-            let cctp_client = cctp::CctpClient::new(env, &cctp_address);
-            cctp_client.deposit_for_burn(&amount, destination_domain, recipient, token);
-
-            Ok(())
-        }
-    }
-}
-
 #[contract]
-pub struct TrustlessOssContract;
+pub struct TOSSContract;
 
 #[contractimpl]
-impl TrustlessOssContract {
+impl TOSSContract {
     /// Initializes the single-repo escrow state with the maintainer, platform, and token configurations.
     pub fn initialize(
         env: Env,
@@ -118,7 +72,7 @@ impl TrustlessOssContract {
         }
 
         let token_client = token::Client::new(&env, &escrow.token);
-        token_client.transfer(&escrow.maintainer, &env.current_contract_address(), &amount);
+        token_client.transfer(&escrow.maintainer, env.current_contract_address(), &amount);
 
         escrow.total_deposited += amount;
         storage::set_escrow(&env, &escrow);
@@ -367,7 +321,7 @@ impl TrustlessOssContract {
         milestone.actual_released = release_amount;
         milestone.released_at = Some(env.ledger().timestamp());
 
-        route_payout(&env, &escrow.token, &contributor, release_amount)?;
+        cc_release_fund(&env, &escrow.token, &contributor, release_amount)?;
 
         storage::set_escrow(&env, &escrow);
         storage::set_milestone(&env, issue_id, &milestone);
@@ -412,7 +366,7 @@ impl TrustlessOssContract {
         milestone.actual_released = actual_release_amount;
         milestone.released_at = Some(env.ledger().timestamp());
 
-        route_payout(&env, &escrow.token, &contributor, actual_release_amount)?;
+        cc_release_fund(&env, &escrow.token, &contributor, actual_release_amount)?;
 
         storage::set_escrow(&env, &escrow);
         storage::set_milestone(&env, issue_id, &milestone);
