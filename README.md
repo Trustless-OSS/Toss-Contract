@@ -225,8 +225,3 @@ Built for transparent open-source funding on <a href="https://stellar.org/">Stel
 
 </div>
 
-## ✅ Test coverage
-
-<!-- COVERAGE_START -->
-[![coverage](https://img.shields.io/badge/coverage-0.0%25-lightgrey.svg)](target/llvm-cov/index.html)
-<!-- COVERAGE_END -->

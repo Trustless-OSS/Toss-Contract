@@ -11,10 +11,10 @@ pub enum PayoutTarget {
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
 pub enum MilestoneStatus {
-    Pending,   
-    Active,    
-    Released,  
-    Cancelled, 
+    Pending,
+    Active,
+    Released,
+    Cancelled,
 }
 
 #[contracttype]
