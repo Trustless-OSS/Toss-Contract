@@ -1,20 +1,20 @@
-use soroban_sdk::{contractevent, contracttype, Address, String};
+use soroban_sdk::{contractevent, contracttype, Address, BytesN, String};
 
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
 pub enum PayoutTarget {
     None,
     Stellar(Address),
-    Cctp(u32, soroban_sdk::BytesN<32>),
+    Cctp(u32, BytesN<32>),
 }
 
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
 pub enum MilestoneStatus {
-    Pending,   // created on-chain, no contributor assigned yet
-    Active,    // contributor assigned, funds hard-locked
-    Released,  // full or partial amount sent to contributor
-    Cancelled, // unassigned or PR closed without merge — funds returned to pool
+    Pending,   
+    Active,    
+    Released,  
+    Cancelled, 
 }
 
 #[contracttype]

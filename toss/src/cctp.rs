@@ -7,7 +7,7 @@ pub const CCTP_TOKEN_MESSENGER_MINTER: &str =
 
 pub fn is_supported_domain(domain: u32) -> bool {
     // Ethereum: 0, Avalanche: 1, Arbitrum: 3, Solana: 5, Base: 6, Polygon PoS: 7, Starknet: 25
-    matches!(domain, 0 | 1 | 3 | 5 | 6 | 7 | 25)
+    matches!(domain, 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 25)
 }
 
 pub fn truncate_to_6_decimals(amount: i128) -> i128 {
