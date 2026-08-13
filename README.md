@@ -5,8 +5,8 @@
 
 **A Soroban smart contract that turns repository funding into transparent, milestone-based USDC payouts.**
 
-[![CI](https://github.com/Trustless-OSS/Toss-Contract/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/Trustless-OSS/Toss-Contract/actions/workflows/rust.yml)
-[![coverage](https://img.shields.io/badge/coverage-unknown-lightgrey.svg)](target/llvm-cov/index.html)
+[![Build](https://github.com/Trustless-OSS/Toss-Contract/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/Trustless-OSS/Toss-Contract/actions/workflows/build.yml)
+[![Tests](https://github.com/Trustless-OSS/Toss-Contract/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/Trustless-OSS/Toss-Contract/actions/workflows/test.yml)
 [![Soroban SDK](https://img.shields.io/badge/Soroban%20SDK-v23-7B3FE4?logo=stellar&logoColor=white)](https://soroban.stellar.org/)
 [![Stellar](https://img.shields.io/badge/Network-Stellar-08B5E5?logo=stellar&logoColor=white)](https://stellar.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22C55E.svg)](LICENSE)
@@ -16,7 +16,6 @@
 </div>
 
 <!-- COVERAGE_BADGE_START -->
-[![coverage](https://img.shields.io/badge/coverage-unknown-lightgrey.svg)](target/llvm-cov/index.html)
 <!-- COVERAGE_BADGE_END -->
 
 ---
