@@ -6,7 +6,7 @@
 **A Soroban smart contract that turns repository funding into transparent, milestone-based USDC payouts.**
 
 [![CI](https://github.com/Trustless-OSS/Toss-Contract/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/Trustless-OSS/Toss-Contract/actions/workflows/rust.yml)
-[![Rust 2021](https://img.shields.io/badge/Rust-2021-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![coverage](https://img.shields.io/badge/coverage-unknown-lightgrey.svg)](target/llvm-cov/index.html)
 [![Soroban SDK](https://img.shields.io/badge/Soroban%20SDK-v23-7B3FE4?logo=stellar&logoColor=white)](https://soroban.stellar.org/)
 [![Stellar](https://img.shields.io/badge/Network-Stellar-08B5E5?logo=stellar&logoColor=white)](https://stellar.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22C55E.svg)](LICENSE)
@@ -14,6 +14,10 @@
 [Quick start](#-quick-start) · [How it works](#-how-it-works) · [Contract API](docs/contract-spec.md) · [Architecture](docs/arch.md) · [Contributing](docs/contributing.md)
 
 </div>
+
+<!-- COVERAGE_BADGE_START -->
+
+<!-- COVERAGE_BADGE_END -->
 
 ---
 
@@ -220,3 +224,9 @@ cargo test --workspace
 Built for transparent open-source funding on <a href="https://stellar.org/">Stellar</a>. ✨
 
 </div>
+
+## ✅ Test coverage
+
+<!-- COVERAGE_START -->
+[![coverage](https://img.shields.io/badge/coverage-0.0%25-lightgrey.svg)](target/llvm-cov/index.html)
+<!-- COVERAGE_END -->

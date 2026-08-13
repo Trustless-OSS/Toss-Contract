@@ -1,0 +1,49 @@
+name: Update test coverage badge
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - '**'
+
+permissions:
+  contents: write
+
+jobs:
+  coverage:
+    name: Run coverage and update README
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm clang lld
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked
+
+      - name: Run cargo llvm-cov (HTML)
+        run: |
+          cargo llvm-cov --workspace --html --output-path target/llvm-cov 2>&1 | tee coverage-output.txt
+
+      - name: Update README coverage badge
+        run: python3 .github/scripts/update_coverage.py coverage-output.txt README.md
+
+      - name: Commit and push README update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git diff --staged --quiet || (git commit -m "ci: update coverage badge [skip ci]" && git push)
