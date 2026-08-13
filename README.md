@@ -16,7 +16,7 @@
 </div>
 
 <!-- COVERAGE_BADGE_START -->
-
+[![coverage](https://img.shields.io/badge/coverage-unknown-lightgrey.svg)](target/llvm-cov/index.html)
 <!-- COVERAGE_BADGE_END -->
 
 ---
