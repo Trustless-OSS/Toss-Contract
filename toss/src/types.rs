@@ -110,17 +110,11 @@ pub struct FundsReleased {
     #[topic]
     pub issue_id: u64,
     pub contributor: PayoutTarget,
-    pub amount: i128,
-}
-
-#[contractevent]
-pub struct PartialRelease {
-    #[topic]
-    pub issue_id: u64,
-    pub contributor: PayoutTarget,
-    pub released: i128,
+    pub actual_released: i128,
     pub returned_to_pool: i128,
 }
+
+
 
 #[contractevent]
 pub struct MilestoneCancelled {

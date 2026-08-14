@@ -129,7 +129,7 @@ target/wasm32-unknown-unknown/release/trustless_oss.wasm
 | 🏗️ Create escrow | `initialize` | Maintainer on the first call |
 | 💰 Fund or withdraw | `deposit_funds` / `withdraw_funds` | Maintainer |
 | 🎯 Manage milestones | `create_milestone`, `assign_contributor`, `reassign_contributor`, `cancel_milestone` | Maintainer |
-| 💸 Pay contributors | `release_funds` / `partial_release` | Platform wallet |
+| 💸 Pay contributors | `release_funds(issue_id, amount)` | Platform wallet |
 | 🔎 Read contract state | `get_escrow`, `get_milestone`, `get_balance`, `list_milestones` | Public |
 
 Amounts use token base units. For a 7-decimal USDC token, `10_000_000` base units equals **1 USDC**.

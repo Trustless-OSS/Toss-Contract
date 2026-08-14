@@ -472,7 +472,7 @@ fn test_release_funds_not_active_panics() {
         storage::set_milestone(&env, 1, &milestone);
     });
 
-    let result = c.try_release_funds(&1);
+    let result = c.try_release_funds(&1, &100);
     assert!(result.is_err());
 }
 
@@ -500,7 +500,7 @@ fn test_release_funds_contributor_not_set() {
         storage::set_milestone(&env, 2, &milestone);
     });
 
-    let result = c.try_release_funds(&2);
+    let result = c.try_release_funds(&2, &100);
     assert!(result.is_err());
 }
 
@@ -528,7 +528,7 @@ fn test_partial_release_too_large() {
         storage::set_milestone(&env, 3, &milestone);
     });
 
-    let result = c.try_partial_release(&3, &150);
+    let result = c.try_release_funds(&3, &150);
     assert!(result.is_err());
 }
 
@@ -756,7 +756,7 @@ fn test_release_funds_transfers_to_stellar_contributor() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    setup.client.try_release_funds(&1).unwrap().unwrap();
+    setup.client.try_release_funds(&1, &500).unwrap().unwrap();
 
     let milestone = setup.client.get_milestone(&1);
     assert_eq!(milestone.status, MilestoneStatus::Released);
@@ -795,7 +795,7 @@ fn test_partial_release_transfers_to_stellar_contributor() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    setup.client.try_partial_release(&1, &400).unwrap().unwrap();
+    setup.client.try_release_funds(&1, &400).unwrap().unwrap();
 
     let milestone = setup.client.get_milestone(&1);
     assert_eq!(milestone.status, MilestoneStatus::Released);
@@ -840,7 +840,7 @@ fn test_cctp_invalid_domain() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    let result = setup.client.try_release_funds(&2);
+    let result = setup.client.try_release_funds(&2, &500);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::InvalidDomain);
 }
 
@@ -870,7 +870,7 @@ fn test_cctp_empty_recipient() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    let result = setup.client.try_release_funds(&3);
+    let result = setup.client.try_release_funds(&3, &500);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::EmptyRecipient);
 }
 
@@ -900,7 +900,7 @@ fn test_cctp_zero_burn_amount() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    let result = setup.client.try_release_funds(&4);
+    let result = setup.client.try_release_funds(&4, &500);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroBurnAmount);
 }
 
@@ -933,7 +933,7 @@ fn test_cctp_release_exact_multiple() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    setup.client.try_release_funds(&5).unwrap().unwrap();
+    setup.client.try_release_funds(&5, &500).unwrap().unwrap();
 
     let milestone = setup.client.get_milestone(&5);
     assert_eq!(milestone.status, MilestoneStatus::Released);
@@ -973,7 +973,7 @@ fn test_cctp_release_non_multiple() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    setup.client.try_release_funds(&6).unwrap().unwrap();
+    setup.client.try_release_funds(&6, &507).unwrap().unwrap();
 
     let milestone = setup.client.get_milestone(&6);
     assert_eq!(milestone.status, MilestoneStatus::Released);
@@ -1464,4 +1464,21 @@ fn test_update_milestone_emits_event() {
     // publishes exactly one, the MilestoneUpdated event.
     let events = setup.env.events().all();
     assert_eq!(events.len(), 1);
+}
+
+
+#[test]
+fn test_release_funds_over_reward_err() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token).unwrap().unwrap();
+    c.try_deposit_funds(&1000).unwrap().unwrap();
+    c.try_create_milestone(&3, &String::from_str(&env, "Over reward"), &100).unwrap().unwrap();
+    c.try_assign_contributor(&3, &PayoutTarget::Stellar(Address::generate(&env))).unwrap().unwrap();
+
+    let result = c.try_release_funds(&3, &150);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::ReleaseTooLarge);
 }

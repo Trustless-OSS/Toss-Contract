@@ -1,7 +1,7 @@
 use crate::types::{
     AdminTransferred, ContributorAssigned, ContributorReassigned, EscrowInitialized,
     FundsDeposited, FundsReleased, FundsWithdrawn, MaintainerUpdated, MilestoneCancelled,
-    MilestoneCreated, MilestoneUpdated, PartialRelease, PayoutTarget, PlatformUpdated,
+    MilestoneCreated, MilestoneUpdated, PayoutTarget, PlatformUpdated,
 };
 use soroban_sdk::{Address, Env};
 
@@ -54,30 +54,23 @@ pub fn emit_contributor_reassigned(env: &Env, issue_id: u64, new_contributor: Pa
     .publish(env);
 }
 
-pub fn emit_funds_released(env: &Env, issue_id: u64, contributor: PayoutTarget, amount: i128) {
-    FundsReleased {
-        issue_id,
-        contributor,
-        amount,
-    }
-    .publish(env);
-}
-
-pub fn emit_partial_release(
+pub fn emit_funds_released(
     env: &Env,
     issue_id: u64,
     contributor: PayoutTarget,
-    released: i128,
+    actual_released: i128,
     returned_to_pool: i128,
 ) {
-    PartialRelease {
+    FundsReleased {
         issue_id,
         contributor,
-        released,
+        actual_released,
         returned_to_pool,
     }
     .publish(env);
 }
+
+
 
 pub fn emit_milestone_cancelled(env: &Env, issue_id: u64) {
     MilestoneCancelled { issue_id }.publish(env);
