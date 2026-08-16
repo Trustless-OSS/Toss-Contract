@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, Env, String, Vec};
+use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, Env, Vec};
 
 pub mod auth;
 pub mod cctp;
@@ -15,6 +15,9 @@ mod test;
 use cctp::cc_release_fund;
 use error::ContractError;
 use types::{BalanceInfo, EscrowState, Milestone, MilestoneStatus, PayoutTarget};
+
+/// Hard cap on the number of milestones returned by a single `list_milestones` page.
+pub const MAX_PAGE_SIZE: u32 = 50;
 
 #[contract]
 pub struct TOSSContract;
@@ -120,12 +123,10 @@ impl TOSSContract {
     }
 
     /// Creates a new pending milestone, reserving the specified reward amount.
-    pub fn create_milestone(
-        env: Env,
-        issue_id: u64,
-        title: String,
-        reward: i128,
-    ) -> Result<(), ContractError> {
+    ///
+    /// The title is not stored on-chain: it already lives on GitHub under the
+    /// `issue_id`, which is the only identifier the contract needs.
+    pub fn create_milestone(env: Env, issue_id: u64, reward: i128) -> Result<(), ContractError> {
         let mut escrow = storage::get_escrow(&env)?;
         auth::require_maintainer(&escrow);
         auth::require_active(&env, &escrow);
@@ -145,7 +146,6 @@ impl TOSSContract {
 
         let milestone = Milestone {
             issue_id,
-            title,
             reward,
             contributor: PayoutTarget::None,
             status: MilestoneStatus::Pending,
@@ -164,24 +164,19 @@ impl TOSSContract {
         Ok(())
     }
 
-    /// Updates the title and reward of a pending milestone before any work begins.
+    /// Updates the reward of a pending milestone before any work begins.
     ///
     /// Mirrors `create_milestone`'s authorization: maintainer-only and requires an
     /// active escrow. Only milestones still in `Pending` status may be edited — once
     /// a contributor is assigned (`Active`) or the milestone is `Released`/`Cancelled`
-    /// the title and reward are immutable. The `issue_id` itself never changes; this
-    /// is a metadata/reward edit only.
+    /// the reward is immutable. The `issue_id` itself never changes; this is a reward
+    /// edit only (titles are not stored on-chain).
     ///
     /// When the reward changes, `escrow.reserved` is adjusted by the delta. A reward
     /// increase is checked against the currently available balance and rejected with
     /// `InsufficientBalance` if it doesn't fit; a decrease frees the difference back
     /// into the available pool.
-    pub fn update_milestone(
-        env: Env,
-        issue_id: u64,
-        title: String,
-        reward: i128,
-    ) -> Result<(), ContractError> {
+    pub fn update_milestone(env: Env, issue_id: u64, reward: i128) -> Result<(), ContractError> {
         let mut escrow = storage::get_escrow(&env)?;
         auth::require_maintainer(&escrow);
         auth::require_active(&env, &escrow);
@@ -209,7 +204,6 @@ impl TOSSContract {
         }
 
         escrow.reserved += delta;
-        milestone.title = title;
         milestone.reward = reward;
 
         storage::set_escrow(&env, &escrow);
@@ -479,14 +473,42 @@ impl TOSSContract {
         })
     }
 
-    /// Lists all milestones that have been created for this repository.
-    pub fn list_milestones(env: Env) -> Result<Vec<Milestone>, ContractError> {
+    /// Returns a paginated slice of the milestones created for this repository.
+    ///
+    /// `offset` is the index of the first milestone to return and `limit` is the
+    /// requested page size. A zero `limit` is rejected with `ZeroPageLimit`;
+    /// larger limits are clamped to `MAX_PAGE_SIZE`. Offsets at or past the end
+    /// of the list return an empty vector. `EscrowIssueIds` remains the index
+    /// driving the listing.
+    pub fn list_milestones(
+        env: Env,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<Milestone>, ContractError> {
+        if limit == 0 {
+            return Err(ContractError::ZeroPageLimit);
+        }
+
         let issue_ids = storage::get_issue_ids(&env);
+        let count = issue_ids.len();
+
+        if offset >= count {
+            return Ok(Vec::new(&env));
+        }
+
+        let page_limit = limit.min(MAX_PAGE_SIZE);
+        let end = offset.saturating_add(page_limit).min(count);
+
         let mut milestones: Vec<Milestone> = Vec::new(&env);
-        for i in 0..issue_ids.len() {
+        for i in offset..end {
             let id = issue_ids.get(i).unwrap();
             milestones.push_back(storage::get_milestone(&env, id)?);
         }
         Ok(milestones)
+    }
+
+    /// Returns the total number of milestones created for this repository.
+    pub fn get_milestone_count(env: Env) -> u32 {
+        storage::get_issue_ids(&env).len()
     }
 }

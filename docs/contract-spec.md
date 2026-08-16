@@ -11,7 +11,8 @@ The contract exposes the following public methods:
 | `initialize(repo_id, maintainer, platform, token)` | First call: maintainer; later calls: stored admin | Creates the single escrow and stores the admin. |
 | `deposit_funds(amount)` | Maintainer | Transfers USDC from the maintainer into the contract. |
 | `withdraw_funds(amount)` | Maintainer | Returns only available USDC to the maintainer. |
-| `create_milestone(issue_id, title, reward)` | Maintainer | Creates a pending milestone and reserves its reward. |
+| `create_milestone(issue_id, reward)` | Maintainer | Creates a pending milestone and reserves its reward. Titles stay on GitHub; only the issue ID is stored. |
+| `update_milestone(issue_id, reward)` | Maintainer | Edits the reward of a pending milestone, adjusting the reservation by the delta. |
 | `assign_contributor(issue_id, contributor)` | Maintainer | Sets the payout target and moves a pending milestone to active. |
 | `reassign_contributor(issue_id, contributor)` | Maintainer | Changes the payout target of an active milestone. |
 | `release_funds(issue_id)` | Platform | Pays the full reward and marks the milestone released. |
@@ -20,7 +21,8 @@ The contract exposes the following public methods:
 | `get_escrow()` | None | Reads the escrow state. |
 | `get_milestone(issue_id)` | None | Reads one milestone. |
 | `get_balance()` | None | Reads deposited, reserved, released, and available amounts. |
-| `list_milestones()` | None | Returns all indexed milestones. |
+| `list_milestones(offset, limit)` | None | Returns a paginated slice of milestones. A zero `limit` is rejected with `ZeroPageLimit`; limits above 50 are clamped. Past-the-end offsets return an empty vector. |
+| `get_milestone_count()` | None | Returns the total number of milestones. |
 
 Every state-changing method requires an active escrow. Amounts are integer token base units; for a 7-decimal USDC token, `10_000_000` base units equals 1 USDC.
 
@@ -31,6 +33,10 @@ Every state-changing method requires an active escrow. Amounts are integer token
 ```text
 stellar_address: set for an assigned contributor; unset contributors cannot be paid
 ```
+
+### `Milestone`
+
+Stores `issue_id`, `reward`, `contributor`, `status`, `created_at`, `released_at`, and `actual_released`. The milestone **title is intentionally not stored on-chain** — it already lives on GitHub, so `create_milestone`/`update_milestone` take only the reward.
 
 ### `MilestoneStatus`
 
@@ -71,6 +77,8 @@ State-changing methods emit typed events for initialization, deposits, withdrawa
 | 20–22 | `InsufficientBalance`, `WithdrawExceedsAvailable`, `ZeroAmount` |
 | 30–34 | `MilestoneNotFound`, `MilestoneNotPending`, `MilestoneNotActive`, `DuplicateIssueId`, `ReleaseTooLarge` |
 | 40 | `ContributorNotSet` |
+| 50–53 | `InvalidDomain`, `EmptyRecipient`, `ZeroBurnAmount`, `InvalidCctpRecipientPadding` |
+| 60 | `ZeroPageLimit` |
 
 ## Deployment and integration
 
