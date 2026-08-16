@@ -21,8 +21,6 @@ pub enum MilestoneStatus {
 #[derive(Clone, Debug)]
 pub struct Milestone {
     pub issue_id: u64,
-    // No title: the issue title already lives on GitHub, and storing a copy
-    // on-chain would only increase storage and CPU cost.
     pub reward: i128, // in stroops (1 USDC = 10_000_000)
     pub contributor: PayoutTarget,
     pub status: MilestoneStatus,

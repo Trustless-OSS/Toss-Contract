@@ -123,9 +123,6 @@ impl TOSSContract {
     }
 
     /// Creates a new pending milestone, reserving the specified reward amount.
-    ///
-    /// The title is not stored on-chain: it already lives on GitHub under the
-    /// `issue_id`, which is the only identifier the contract needs.
     pub fn create_milestone(env: Env, issue_id: u64, reward: i128) -> Result<(), ContractError> {
         let mut escrow = storage::get_escrow(&env)?;
         auth::require_maintainer(&escrow);
