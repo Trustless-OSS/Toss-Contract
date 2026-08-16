@@ -36,7 +36,7 @@ stellar_address: set for an assigned contributor; unset contributors cannot be p
 
 ### `Milestone`
 
-Stores `issue_id`, `reward`, `contributor`, `status`, `created_at`, `released_at`, and `actual_released`. The milestone **title is intentionally not stored on-chain** — it already lives on GitHub, so `create_milestone`/`update_milestone` take only the reward.
+Stores `issue_id`, `reward`, `contributor`, `status`, `created_at`, `released_at`, and `actual_released`. The milestone **title is intentionally not stored on-chain** — it already lives on GitHub, so `create_milestone(issue_id, reward)` stores only the issue ID and reward, and `update_milestone(issue_id, reward)` changes only the reward.
 
 ### `MilestoneStatus`
 
@@ -66,7 +66,7 @@ Persistent storage keys are:
 | `EscrowIssueIds` | `Vec<u64>` index used for listing |
 | `Admin` | Stored initializer/admin address |
 
-State-changing methods emit typed events for initialization, deposits, withdrawals, milestone creation, contributor assignment/reassignment, releases, partial releases, and cancellation. The event topic payloads are defined in `trustless-oss/src/events.rs`.
+State-changing methods emit typed events for initialization, deposits, withdrawals, milestone creation and updates, contributor assignment/reassignment, releases, partial releases, and cancellation. The event topic payloads are defined in `toss/src/events.rs`.
 
 ## Error groups
 
@@ -94,6 +94,8 @@ USDC_TOKEN_ADDRESS=<testnet_usdc_sac>
 ```
 
 The contract does not load environment variables itself. These values belong to the caller or deployment environment and must never be committed.
+
+> **Breaking storage change — fresh deployment required.** This version removed the on-chain `Milestone.title` field, which changes the storage encoding of milestone records. Records written by an older binary cannot be decoded by this version, and the contract provides no in-place migration. Deploy a fresh contract instance with this wasm: it starts with empty storage, so the escrow state and all existing milestone data are reset.
 
 ## Known limitations
 

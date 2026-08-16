@@ -486,9 +486,9 @@ fn test_list_milestones_zero_limit_rejected() {
 fn test_list_milestones_limit_capped() {
     let setup = setup_milestones(60, 10);
 
-    // A limit above the cap is clamped to MAX_PAGE_SIZE.
+    // A limit above the cap is clamped to the public 50-item page cap.
     let page = setup.client.list_milestones(&0, &100);
-    assert_eq!(page.len(), MAX_PAGE_SIZE);
+    assert_eq!(page.len(), 50);
     assert_eq!(page.get(0).unwrap().issue_id, 1);
 
     // The remainder is reachable past the first page.
