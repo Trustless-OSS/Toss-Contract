@@ -149,7 +149,9 @@ pub struct MaintainerUpdated {
 }
 
 #[contractevent]
+#[derive(Clone, Debug)]
 pub struct EscrowPaused;
 
 #[contractevent]
+#[derive(Clone, Debug)]
 pub struct EscrowResumed;
