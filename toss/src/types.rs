@@ -26,7 +26,7 @@ pub struct Milestone {
     pub status: MilestoneStatus,
     pub created_at: u64, // ledger timestamp
     pub released_at: Option<u64>,
-    pub actual_released: i128, // 0 unless partial_release was used
+    pub actual_released: i128, // 0 unless a partial or truncated release occurred
 }
 
 #[contracttype]
@@ -109,15 +109,7 @@ pub struct FundsReleased {
     #[topic]
     pub issue_id: u64,
     pub contributor: PayoutTarget,
-    pub amount: i128,
-}
-
-#[contractevent]
-pub struct PartialRelease {
-    #[topic]
-    pub issue_id: u64,
-    pub contributor: PayoutTarget,
-    pub released: i128,
+    pub actual_released: i128,
     pub returned_to_pool: i128,
 }
 

@@ -284,8 +284,14 @@ impl TOSSContract {
         Ok(())
     }
 
-    /// Releases the fully reserved reward amount to the assigned contributor upon completion.
-    pub fn release_funds(env: Env, issue_id: u64) -> Result<(), ContractError> {
+    /// Releases a payout to the assigned contributor upon completion.
+    ///
+    /// `amount == reward` is a full release; `amount < reward` pays part of the
+    /// reward and returns the remainder to the available pool; `amount > reward`
+    /// is rejected with `ReleaseTooLarge`. The released amount reported in the
+    /// event is what actually left the contract (CCTP truncates to 6 decimals),
+    /// with the unspent difference credited back to the pool.
+    pub fn release_funds(env: Env, issue_id: u64, amount: i128) -> Result<(), ContractError> {
         let mut escrow = storage::get_escrow(&env)?;
         auth::require_platform(&escrow);
         auth::require_active(&env, &escrow);
@@ -296,57 +302,15 @@ impl TOSSContract {
             panic_with_error!(&env, ContractError::MilestoneNotActive);
         }
 
-        let reward = milestone.reward;
-        let contributor = milestone.contributor.clone();
-
-        let release_amount = match contributor {
-            PayoutTarget::Stellar(_) => reward,
-            PayoutTarget::Cctp(_, _) => cctp::truncate_to_6_decimals(reward),
-            PayoutTarget::None => return Err(ContractError::ContributorNotSet),
-        };
-
-        escrow.reserved -= reward;
-        escrow.total_released += release_amount;
-
-        milestone.status = MilestoneStatus::Released;
-        milestone.actual_released = release_amount;
-        milestone.released_at = Some(env.ledger().timestamp());
-
-        cc_release_fund(&env, &escrow.token, &contributor, release_amount)?;
-
-        storage::set_escrow(&env, &escrow);
-        storage::set_milestone(&env, issue_id, &milestone);
-
-        events::emit_funds_released(&env, issue_id, contributor, reward);
-
-        Ok(())
-    }
-
-    /// Releases a partial reward amount to the contributor and returns the remainder to the available pool.
-    pub fn partial_release(
-        env: Env,
-        issue_id: u64,
-        release_amount: i128,
-    ) -> Result<(), ContractError> {
-        let mut escrow = storage::get_escrow(&env)?;
-        auth::require_platform(&escrow);
-        auth::require_active(&env, &escrow);
-
-        let mut milestone = storage::get_milestone(&env, issue_id)?;
-
-        if milestone.status != MilestoneStatus::Active {
-            panic_with_error!(&env, ContractError::MilestoneNotActive);
-        }
-
-        if release_amount > milestone.reward {
+        if amount > milestone.reward {
             panic_with_error!(&env, ContractError::ReleaseTooLarge);
         }
 
         let contributor = milestone.contributor.clone();
 
         let actual_release_amount = match contributor {
-            PayoutTarget::Stellar(_) => release_amount,
-            PayoutTarget::Cctp(_, _) => cctp::truncate_to_6_decimals(release_amount),
+            PayoutTarget::Stellar(_) => amount,
+            PayoutTarget::Cctp(_, _) => cctp::truncate_to_6_decimals(amount),
             PayoutTarget::None => return Err(ContractError::ContributorNotSet),
         };
 
@@ -357,13 +321,13 @@ impl TOSSContract {
         milestone.actual_released = actual_release_amount;
         milestone.released_at = Some(env.ledger().timestamp());
 
-        cc_release_fund(&env, &escrow.token, &contributor, actual_release_amount)?;
-
         storage::set_escrow(&env, &escrow);
         storage::set_milestone(&env, issue_id, &milestone);
 
+        cc_release_fund(&env, &escrow.token, &contributor, actual_release_amount)?;
+
         let returned_to_pool = milestone.reward - actual_release_amount;
-        events::emit_partial_release(
+        events::emit_funds_released(
             &env,
             issue_id,
             contributor,

@@ -7,7 +7,8 @@ use super::*;
 use crate::error::ContractError;
 use crate::types::MilestoneStatus;
 use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
-use soroban_sdk::{token, Address, Env, String, Vec};
+use soroban_sdk::TryIntoVal;
+use soroban_sdk::{token, Address, Env, Map, Symbol, Val, Vec};
 
 #[soroban_sdk::contract]
 pub struct MockCctpContract;
@@ -572,7 +573,7 @@ fn test_release_funds_not_active_panics() {
         storage::set_milestone(&env, 1, &milestone);
     });
 
-    let result = c.try_release_funds(&1);
+    let result = c.try_release_funds(&1, &100);
     assert!(result.is_err());
 }
 
@@ -599,12 +600,12 @@ fn test_release_funds_contributor_not_set() {
         storage::set_milestone(&env, 2, &milestone);
     });
 
-    let result = c.try_release_funds(&2);
+    let result = c.try_release_funds(&2, &100);
     assert!(result.is_err());
 }
 
 #[test]
-fn test_partial_release_too_large() {
+fn test_release_funds_too_large() {
     let (env, contract_id) = setup_env();
     let c = client(&env, &contract_id);
     env.mock_all_auths();
@@ -626,7 +627,7 @@ fn test_partial_release_too_large() {
         storage::set_milestone(&env, 3, &milestone);
     });
 
-    let result = c.try_partial_release(&3, &150);
+    let result = c.try_release_funds(&3, &150);
     assert!(result.is_err());
 }
 
@@ -829,6 +830,27 @@ fn test_withdraw_requires_maintainer() {
 // Stellar payouts
 // ---------------------------------------------------------------------------
 
+/// Decodes the `FundsReleased` event emitted by the latest contract invocation,
+/// returning `(actual_released, returned_to_pool)`.
+fn funds_released_event(env: &Env, contract_id: &Address) -> (i128, i128) {
+    let event = env
+        .events()
+        .all()
+        .iter()
+        .find(|e| &e.0 == contract_id)
+        .expect("no FundsReleased event emitted");
+    let data: Map<Symbol, Val> = event.2.try_into_val(env).unwrap();
+    let actual_released: i128 = data
+        .get_unchecked(Symbol::new(env, "actual_released"))
+        .try_into_val(env)
+        .unwrap();
+    let returned_to_pool: i128 = data
+        .get_unchecked(Symbol::new(env, "returned_to_pool"))
+        .try_into_val(env)
+        .unwrap();
+    (actual_released, returned_to_pool)
+}
+
 #[test]
 fn test_release_funds_transfers_to_stellar_contributor() {
     let setup = setup_funding_env(1_000);
@@ -852,7 +874,13 @@ fn test_release_funds_transfers_to_stellar_contributor() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    setup.client.try_release_funds(&1).unwrap().unwrap();
+    setup.client.try_release_funds(&1, &500).unwrap().unwrap();
+
+    // Event assertions must run before any other invocation: the test host
+    // clears the event log at the start of every top-level call.
+    let (actual_released, returned_to_pool) = funds_released_event(&setup.env, &setup.contract_id);
+    assert_eq!(actual_released, 500);
+    assert_eq!(returned_to_pool, 0);
 
     let milestone = setup.client.get_milestone(&1);
     assert_eq!(milestone.status, MilestoneStatus::Released);
@@ -868,7 +896,7 @@ fn test_release_funds_transfers_to_stellar_contributor() {
 }
 
 #[test]
-fn test_partial_release_transfers_to_stellar_contributor() {
+fn test_release_funds_partial_transfers_to_stellar_contributor() {
     let setup = setup_funding_env(1_000);
     setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
     let contributor = Address::generate(&setup.env);
@@ -890,7 +918,13 @@ fn test_partial_release_transfers_to_stellar_contributor() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    setup.client.try_partial_release(&1, &400).unwrap().unwrap();
+    setup.client.try_release_funds(&1, &400).unwrap().unwrap();
+
+    // Event assertions must run before any other invocation: the test host
+    // clears the event log at the start of every top-level call.
+    let (actual_released, returned_to_pool) = funds_released_event(&setup.env, &setup.contract_id);
+    assert_eq!(actual_released, 400);
+    assert_eq!(returned_to_pool, 100);
 
     let milestone = setup.client.get_milestone(&1);
     assert_eq!(milestone.status, MilestoneStatus::Released);
@@ -934,7 +968,7 @@ fn test_cctp_invalid_domain() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    let result = setup.client.try_release_funds(&2);
+    let result = setup.client.try_release_funds(&2, &500);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::InvalidDomain);
 }
 
@@ -963,7 +997,7 @@ fn test_cctp_empty_recipient() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    let result = setup.client.try_release_funds(&3);
+    let result = setup.client.try_release_funds(&3, &500);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::EmptyRecipient);
 }
 
@@ -992,7 +1026,7 @@ fn test_cctp_zero_burn_amount() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    let result = setup.client.try_release_funds(&4);
+    let result = setup.client.try_release_funds(&4, &5);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroBurnAmount);
 }
 
@@ -1024,7 +1058,13 @@ fn test_cctp_release_exact_multiple() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    setup.client.try_release_funds(&5).unwrap().unwrap();
+    setup.client.try_release_funds(&5, &500).unwrap().unwrap();
+
+    // Event assertions must run before any other invocation: the test host
+    // clears the event log at the start of every top-level call.
+    let (actual_released, returned_to_pool) = funds_released_event(&setup.env, &setup.contract_id);
+    assert_eq!(actual_released, 500);
+    assert_eq!(returned_to_pool, 0);
 
     let milestone = setup.client.get_milestone(&5);
     assert_eq!(milestone.status, MilestoneStatus::Released);
@@ -1063,7 +1103,15 @@ fn test_cctp_release_non_multiple() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    setup.client.try_release_funds(&6).unwrap().unwrap();
+    setup.client.try_release_funds(&6, &507).unwrap().unwrap();
+
+    // Event assertions must run before any other invocation: the test host
+    // clears the event log at the start of every top-level call. The event
+    // reports what actually left the contract and the dust credited back to
+    // the pool.
+    let (actual_released, returned_to_pool) = funds_released_event(&setup.env, &setup.contract_id);
+    assert_eq!(actual_released, 500);
+    assert_eq!(returned_to_pool, 7);
 
     let milestone = setup.client.get_milestone(&6);
     assert_eq!(milestone.status, MilestoneStatus::Released);
@@ -1718,12 +1766,12 @@ fn test_release_funds_blocked_when_paused() {
 
     setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
-    let result = setup.client.try_release_funds(&1);
+    let result = setup.client.try_release_funds(&1, &500);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
 }
 
 #[test]
-fn test_partial_release_blocked_when_paused() {
+fn test_release_funds_partial_blocked_when_paused() {
     let setup = setup_funding_env(1_000);
     setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
     let contributor = Address::generate(&setup.env);
@@ -1747,7 +1795,7 @@ fn test_partial_release_blocked_when_paused() {
 
     setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
-    let result = setup.client.try_partial_release(&2, &300);
+    let result = setup.client.try_release_funds(&2, &300);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
 }
 
