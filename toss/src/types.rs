@@ -1,4 +1,4 @@
-use soroban_sdk::{contractevent, contracttype, Address, BytesN};
+use soroban_sdk::{contractevent, contracttype, Address, Bytes, BytesN};
 
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
@@ -152,10 +152,15 @@ pub struct MaintainerUpdated {
 pub struct EscrowPaused {
     #[topic]
     pub repo_id: u64,
+    #[topic]
+    pub paused_by: Address,
+    pub reason: Option<Bytes>,
 }
 
 #[contractevent]
 pub struct EscrowResumed {
     #[topic]
     pub repo_id: u64,
+    #[topic]
+    pub resumed_by: Address,
 }

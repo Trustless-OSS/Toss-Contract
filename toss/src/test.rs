@@ -1546,7 +1546,7 @@ fn test_pause_escrow_success() {
     let setup = setup_funding_env(1_000);
     setup.client.try_deposit_funds(&100).unwrap().unwrap();
 
-    let result = setup.client.try_pause_escrow();
+    let result = setup.client.try_pause_escrow(&None);
     assert!(result.is_ok());
 
     let escrow = setup.client.get_escrow();
@@ -1556,7 +1556,7 @@ fn test_pause_escrow_success() {
 #[test]
 fn test_resume_escrow_success() {
     let setup = setup_funding_env(1_000);
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     let result = setup.client.try_resume_escrow();
     assert!(result.is_ok());
@@ -1569,7 +1569,7 @@ fn test_resume_escrow_success() {
 fn test_pause_escrow_emits_event() {
     let setup = setup_funding_env(1_000);
 
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     let events = setup.env.events().all();
     assert!(!events.is_empty());
@@ -1578,7 +1578,7 @@ fn test_pause_escrow_emits_event() {
 #[test]
 fn test_resume_escrow_emits_event() {
     let setup = setup_funding_env(1_000);
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     setup.client.try_resume_escrow().unwrap().unwrap();
 
@@ -1589,9 +1589,9 @@ fn test_resume_escrow_emits_event() {
 #[test]
 fn test_double_pause_rejected() {
     let setup = setup_funding_env(1_000);
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
-    let result = setup.client.try_pause_escrow();
+    let result = setup.client.try_pause_escrow(&None);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
 }
 
@@ -1611,14 +1611,14 @@ fn test_pause_escrow_requires_admin() {
     let setup = setup_funding_env(1_000);
 
     setup.env.set_auths(&[]);
-    let result = setup.client.try_pause_escrow();
+    let result = setup.client.try_pause_escrow(&None);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_resume_escrow_requires_admin() {
     let setup = setup_funding_env(1_000);
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     setup.env.set_auths(&[]);
     let result = setup.client.try_resume_escrow();
@@ -1628,7 +1628,7 @@ fn test_resume_escrow_requires_admin() {
 #[test]
 fn test_deposit_funds_blocked_when_paused() {
     let setup = setup_funding_env(1_000);
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     let result = setup.client.try_deposit_funds(&100);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
@@ -1638,7 +1638,7 @@ fn test_deposit_funds_blocked_when_paused() {
 fn test_withdraw_funds_blocked_when_paused() {
     let setup = setup_funding_env(1_000);
     setup.client.try_deposit_funds(&500).unwrap().unwrap();
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     let result = setup.client.try_withdraw_funds(&100);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
@@ -1648,7 +1648,7 @@ fn test_withdraw_funds_blocked_when_paused() {
 fn test_create_milestone_blocked_when_paused() {
     let setup = setup_funding_env(1_000);
     setup.client.try_deposit_funds(&500).unwrap().unwrap();
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     let result = setup.client.try_create_milestone(&1, &100);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
@@ -1657,7 +1657,7 @@ fn test_create_milestone_blocked_when_paused() {
 #[test]
 fn test_update_milestone_blocked_when_paused() {
     let setup = setup_pending_milestone(1_000, 300);
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     let result = setup.client.try_update_milestone(&1, &400);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
@@ -1666,7 +1666,7 @@ fn test_update_milestone_blocked_when_paused() {
 #[test]
 fn test_assign_contributor_blocked_when_paused() {
     let setup = setup_pending_milestone(1_000, 300);
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     let contributor = Address::generate(&setup.env);
     let result = setup
@@ -1684,7 +1684,7 @@ fn test_reassign_contributor_blocked_when_paused() {
         .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor))
         .unwrap()
         .unwrap();
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     let new_contributor = Address::generate(&setup.env);
     let result = setup
@@ -1716,7 +1716,7 @@ fn test_release_funds_blocked_when_paused() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     let result = setup.client.try_release_funds(&1);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
@@ -1745,7 +1745,7 @@ fn test_partial_release_blocked_when_paused() {
         storage::set_escrow(&setup.env, &escrow);
     });
 
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     let result = setup.client.try_partial_release(&2, &300);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
@@ -1754,7 +1754,7 @@ fn test_partial_release_blocked_when_paused() {
 #[test]
 fn test_cancel_milestone_blocked_when_paused() {
     let setup = setup_pending_milestone(1_000, 300);
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     let result = setup.client.try_cancel_milestone(&1);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
@@ -1763,7 +1763,7 @@ fn test_cancel_milestone_blocked_when_paused() {
 #[test]
 fn test_transfer_admin_blocked_when_paused() {
     let setup = setup_funding_env(1_000);
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     let new_admin = Address::generate(&setup.env);
     let result = setup.client.try_transfer_admin(&new_admin);
@@ -1773,7 +1773,7 @@ fn test_transfer_admin_blocked_when_paused() {
 #[test]
 fn test_update_platform_blocked_when_paused() {
     let setup = setup_funding_env(1_000);
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     let new_platform = Address::generate(&setup.env);
     let result = setup.client.try_update_platform(&new_platform);
@@ -1783,7 +1783,7 @@ fn test_update_platform_blocked_when_paused() {
 #[test]
 fn test_update_maintainer_blocked_when_paused() {
     let setup = setup_funding_env(1_000);
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     let new_maintainer = Address::generate(&setup.env);
     let result = setup.client.try_update_maintainer(&new_maintainer);
@@ -1793,7 +1793,7 @@ fn test_update_maintainer_blocked_when_paused() {
 #[test]
 fn test_query_methods_work_while_paused() {
     let setup = setup_pending_milestone(1_000, 300);
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     // All query methods should still work
     let escrow = setup.client.get_escrow();
@@ -1821,7 +1821,7 @@ fn test_pause_resume_cycle() {
     assert!(escrow.is_active);
 
     // Pause
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
     let escrow = setup.client.get_escrow();
     assert!(!escrow.is_active);
 
@@ -1855,7 +1855,7 @@ fn test_pause_preserves_balances() {
     });
 
     let balance_before = setup.client.get_balance();
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
     let balance_after = setup.client.get_balance();
 
     // Balances should not change
@@ -1873,7 +1873,7 @@ fn test_pause_resume_with_milestone_state() {
     let setup = setup_pending_milestone(1_000, 300);
 
     // Pause
-    setup.client.try_pause_escrow().unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
 
     // Verify milestone is still accessible and unchanged
     let milestone = setup.client.get_milestone(&1);
