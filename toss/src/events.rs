@@ -1,9 +1,10 @@
 use crate::types::{
-    AdminTransferred, ContributorAssigned, ContributorReassigned, EscrowInitialized,
-    FundsDeposited, FundsReleased, FundsWithdrawn, MaintainerUpdated, MilestoneCancelled,
-    MilestoneCreated, MilestoneUpdated, PartialRelease, PayoutTarget, PlatformUpdated,
+    AdminTransferred, ContributorAssigned, ContributorReassigned, EscrowInitialized, EscrowPaused,
+    EscrowResumed, FundsDeposited, FundsReleased, FundsWithdrawn, MaintainerUpdated,
+    MilestoneCancelled, MilestoneCreated, MilestoneUpdated, PartialRelease, PayoutTarget,
+    PlatformUpdated,
 };
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{Address, Bytes, Env};
 
 pub fn emit_escrow_initialized(env: &Env, repo_id: u64, maintainer: Address) {
     EscrowInitialized {
@@ -103,6 +104,23 @@ pub fn emit_maintainer_updated(env: &Env, old_maintainer: Address, new_maintaine
     MaintainerUpdated {
         old_maintainer,
         new_maintainer,
+    }
+    .publish(env);
+}
+
+pub fn emit_escrow_paused(env: &Env, repo_id: u64, paused_by: Address, reason: Option<Bytes>) {
+    EscrowPaused {
+        repo_id,
+        paused_by,
+        reason,
+    }
+    .publish(env);
+}
+
+pub fn emit_escrow_resumed(env: &Env, repo_id: u64, resumed_by: Address) {
+    EscrowResumed {
+        repo_id,
+        resumed_by,
     }
     .publish(env);
 }

@@ -1538,3 +1538,359 @@ fn test_update_milestone_emits_event() {
     let events = setup.env.events().all();
     assert_eq!(events.len(), 1);
 }
+
+// pause_escrow and resume_escrow
+
+#[test]
+fn test_pause_escrow_success() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&100).unwrap().unwrap();
+
+    let result = setup.client.try_pause_escrow(&None);
+    assert!(result.is_ok());
+
+    let escrow = setup.client.get_escrow();
+    assert!(!escrow.is_active);
+}
+
+#[test]
+fn test_resume_escrow_success() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let result = setup.client.try_resume_escrow();
+    assert!(result.is_ok());
+
+    let escrow = setup.client.get_escrow();
+    assert!(escrow.is_active);
+}
+
+#[test]
+fn test_pause_escrow_emits_event() {
+    let setup = setup_funding_env(1_000);
+
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let events = setup.env.events().all();
+    assert!(!events.is_empty());
+}
+
+#[test]
+fn test_resume_escrow_emits_event() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    setup.client.try_resume_escrow().unwrap().unwrap();
+
+    let events = setup.env.events().all();
+    assert!(!events.is_empty());
+}
+
+#[test]
+fn test_double_pause_rejected() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let result = setup.client.try_pause_escrow(&None);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+}
+
+#[test]
+fn test_double_resume_rejected() {
+    let setup = setup_funding_env(1_000);
+
+    let result = setup.client.try_resume_escrow();
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::EscrowAlreadyActive
+    );
+}
+
+#[test]
+fn test_pause_escrow_requires_admin() {
+    let setup = setup_funding_env(1_000);
+
+    setup.env.set_auths(&[]);
+    let result = setup.client.try_pause_escrow(&None);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_resume_escrow_requires_admin() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    setup.env.set_auths(&[]);
+    let result = setup.client.try_resume_escrow();
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_deposit_funds_blocked_when_paused() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let result = setup.client.try_deposit_funds(&100);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+}
+
+#[test]
+fn test_withdraw_funds_blocked_when_paused() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&500).unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let result = setup.client.try_withdraw_funds(&100);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+}
+
+#[test]
+fn test_create_milestone_blocked_when_paused() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&500).unwrap().unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let result = setup.client.try_create_milestone(&1, &100);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+}
+
+#[test]
+fn test_update_milestone_blocked_when_paused() {
+    let setup = setup_pending_milestone(1_000, 300);
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let result = setup.client.try_update_milestone(&1, &400);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+}
+
+#[test]
+fn test_assign_contributor_blocked_when_paused() {
+    let setup = setup_pending_milestone(1_000, 300);
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let contributor = Address::generate(&setup.env);
+    let result = setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor));
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+}
+
+#[test]
+fn test_reassign_contributor_blocked_when_paused() {
+    let setup = setup_pending_milestone(1_000, 300);
+    let contributor = Address::generate(&setup.env);
+    setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor))
+        .unwrap()
+        .unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let new_contributor = Address::generate(&setup.env);
+    let result = setup
+        .client
+        .try_reassign_contributor(&1, &PayoutTarget::Stellar(new_contributor));
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+}
+
+#[test]
+fn test_release_funds_blocked_when_paused() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+    let contributor = Address::generate(&setup.env);
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let milestone = Milestone {
+            issue_id: 1,
+            reward: 500,
+            contributor: PayoutTarget::Stellar(contributor.clone()),
+            status: MilestoneStatus::Active,
+            created_at: 100,
+            released_at: None,
+            actual_released: 0,
+        };
+        storage::set_milestone(&setup.env, 1, &milestone);
+
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.reserved += 500;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let result = setup.client.try_release_funds(&1);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+}
+
+#[test]
+fn test_partial_release_blocked_when_paused() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+    let contributor = Address::generate(&setup.env);
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let milestone = Milestone {
+            issue_id: 2,
+            reward: 500,
+            contributor: PayoutTarget::Stellar(contributor.clone()),
+            status: MilestoneStatus::Active,
+            created_at: 100,
+            released_at: None,
+            actual_released: 0,
+        };
+        storage::set_milestone(&setup.env, 2, &milestone);
+
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.reserved += 500;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let result = setup.client.try_partial_release(&2, &300);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+}
+
+#[test]
+fn test_cancel_milestone_blocked_when_paused() {
+    let setup = setup_pending_milestone(1_000, 300);
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let result = setup.client.try_cancel_milestone(&1);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+}
+
+#[test]
+fn test_transfer_admin_blocked_when_paused() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let new_admin = Address::generate(&setup.env);
+    let result = setup.client.try_transfer_admin(&new_admin);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+}
+
+#[test]
+fn test_update_platform_blocked_when_paused() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let new_platform = Address::generate(&setup.env);
+    let result = setup.client.try_update_platform(&new_platform);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+}
+
+#[test]
+fn test_update_maintainer_blocked_when_paused() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let new_maintainer = Address::generate(&setup.env);
+    let result = setup.client.try_update_maintainer(&new_maintainer);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+}
+
+#[test]
+fn test_query_methods_work_while_paused() {
+    let setup = setup_pending_milestone(1_000, 300);
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    // All query methods should still work
+    let escrow = setup.client.get_escrow();
+    assert!(!escrow.is_active);
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.reward, 300);
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 300);
+
+    let milestones = setup.client.list_milestones(&0, &50);
+    assert_eq!(milestones.len(), 1);
+
+    let count = setup.client.get_milestone_count();
+    assert_eq!(count, 1);
+}
+
+#[test]
+fn test_pause_resume_cycle() {
+    let setup = setup_funding_env(1_000);
+
+    // Initially active
+    let escrow = setup.client.get_escrow();
+    assert!(escrow.is_active);
+
+    // Pause
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+    let escrow = setup.client.get_escrow();
+    assert!(!escrow.is_active);
+
+    // Try to deposit (should fail)
+    let result = setup.client.try_deposit_funds(&100);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+
+    // Resume
+    setup.client.try_resume_escrow().unwrap().unwrap();
+    let escrow = setup.client.get_escrow();
+    assert!(escrow.is_active);
+
+    // Now deposit should work
+    let result = setup.client.try_deposit_funds(&100);
+    assert!(result.is_ok());
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.total_deposited, 100);
+}
+
+#[test]
+fn test_pause_preserves_balances() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&500).unwrap().unwrap();
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.reserved = 200;
+        escrow.total_released = 50;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    let balance_before = setup.client.get_balance();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+    let balance_after = setup.client.get_balance();
+
+    // Balances should not change
+    assert_eq!(
+        balance_before.total_deposited,
+        balance_after.total_deposited
+    );
+    assert_eq!(balance_before.reserved, balance_after.reserved);
+    assert_eq!(balance_before.available, balance_after.available);
+    assert_eq!(balance_before.total_released, balance_after.total_released);
+}
+
+#[test]
+fn test_pause_resume_with_milestone_state() {
+    let setup = setup_pending_milestone(1_000, 300);
+
+    // Pause
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    // Verify milestone is still accessible and unchanged
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.reward, 300);
+    assert_eq!(milestone.status, MilestoneStatus::Pending);
+
+    // Resume
+    setup.client.try_resume_escrow().unwrap().unwrap();
+
+    // Can now assign contributor
+    let contributor = Address::generate(&setup.env);
+    setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor))
+        .unwrap()
+        .unwrap();
+
+    let milestone_after = setup.client.get_milestone(&1);
+    assert_eq!(milestone_after.status, MilestoneStatus::Active);
+}

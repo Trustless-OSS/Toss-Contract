@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, Env, Vec};
+use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, Bytes, Env, Vec};
 
 pub mod auth;
 pub mod cctp;
@@ -437,6 +437,47 @@ impl TOSSContract {
         escrow.maintainer = new_maintainer.clone();
         storage::set_escrow(&env, &escrow);
         events::emit_maintainer_updated(&env, old_maintainer, new_maintainer);
+
+        Ok(())
+    }
+
+    /// Pauses the escrow, blocking all state-changing operations until resumed.
+    ///
+    /// Only the stored admin may call this method. The escrow must be active.
+    /// Query methods (get_escrow, get_milestone, get_balance, list_milestones) remain
+    /// callable while paused. No balances or reserved amounts are touched — only
+    /// is_active is set to false.
+    pub fn pause_escrow(env: Env, reason: Option<Bytes>) -> Result<(), ContractError> {
+        let admin = storage::get_admin(&env).ok_or(ContractError::NotAdmin)?;
+        auth::require_admin(&admin);
+        let mut escrow = storage::get_escrow(&env)?;
+
+        if !escrow.is_active {
+            return Err(ContractError::EscrowInactive);
+        }
+
+        escrow.is_active = false;
+        storage::set_escrow(&env, &escrow);
+        events::emit_escrow_paused(&env, escrow.repo_id, admin.clone(), reason);
+
+        Ok(())
+    }
+
+    /// Resumes the escrow, re-enabling all state-changing operations.
+    ///
+    /// Only the stored admin may call this method. The escrow must be paused (inactive).
+    pub fn resume_escrow(env: Env) -> Result<(), ContractError> {
+        let admin = storage::get_admin(&env).ok_or(ContractError::NotAdmin)?;
+        auth::require_admin(&admin);
+        let mut escrow = storage::get_escrow(&env)?;
+
+        if escrow.is_active {
+            return Err(ContractError::EscrowAlreadyActive);
+        }
+
+        escrow.is_active = true;
+        storage::set_escrow(&env, &escrow);
+        events::emit_escrow_resumed(&env, escrow.repo_id, admin.clone());
 
         Ok(())
     }
