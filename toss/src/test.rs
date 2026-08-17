@@ -1600,7 +1600,10 @@ fn test_double_resume_rejected() {
     let setup = setup_funding_env(1_000);
 
     let result = setup.client.try_resume_escrow();
-    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::EscrowAlreadyActive
+    );
 }
 
 #[test]

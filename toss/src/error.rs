@@ -13,6 +13,7 @@ pub enum ContractError {
     EscrowNotFound = 10,
     EscrowAlreadyExists = 11,
     EscrowInactive = 12,
+    EscrowAlreadyActive = 13,
 
     // Balance
     InsufficientBalance = 20, // deposit would leave pool underfunded

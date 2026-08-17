@@ -441,6 +441,12 @@ impl TOSSContract {
         Ok(())
     }
 
+    /// Pauses the escrow, blocking all state-changing operations until resumed.
+    ///
+    /// Only the stored admin may call this method. The escrow must be active.
+    /// Query methods (get_escrow, get_milestone, get_balance, list_milestones) remain
+    /// callable while paused. No balances or reserved amounts are touched — only
+    /// is_active is set to false.
     pub fn pause_escrow(env: Env) -> Result<(), ContractError> {
         let admin = storage::get_admin(&env).ok_or(ContractError::NotAdmin)?;
         auth::require_admin(&admin);
@@ -466,7 +472,7 @@ impl TOSSContract {
         let mut escrow = storage::get_escrow(&env)?;
 
         if escrow.is_active {
-            return Err(ContractError::EscrowInactive);
+            return Err(ContractError::EscrowAlreadyActive);
         }
 
         escrow.is_active = true;
