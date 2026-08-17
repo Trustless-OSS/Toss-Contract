@@ -5,9 +5,12 @@ use soroban_sdk::{contractclient, token, Address, BytesN, Env, String};
 pub const CCTP_TOKEN_MESSENGER_MINTER: &str =
     "CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP";
 
+pub const CCTP_MESSAGE_TRANSMITTER: &str =
+    "CBC2B5L7Z37P3F42U2XN2F4IHYSPX4L467V3LV5LOGZ43T56BH24C5TH";
+
 pub fn is_supported_domain(domain: u32) -> bool {
-    // Ethereum: 0, Avalanche: 1, Arbitrum: 3, Solana: 5, Base: 6, Polygon PoS: 7, Starknet: 25
-    matches!(domain, 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 25)
+    // Ethereum: 0, Avalanche: 1, OP Mainnet: 2, Arbitrum: 3, Solana: 5, Base: 6, Polygon PoS: 7, Starknet: 25
+    matches!(domain, 0 | 1 | 2 | 3 | 5 | 6 | 7 | 25)
 }
 
 pub fn truncate_to_6_decimals(amount: i128) -> i128 {
@@ -20,8 +23,8 @@ pub fn cctp_remainder(amount: i128) -> i128 {
 
 pub fn has_valid_padding(domain: u32, recipient: &BytesN<32>) -> bool {
     // EVM domains require the first 12 bytes to be zero.
-    // Ethereum: 0, Avalanche: 1, Arbitrum: 3, Base: 6, Polygon PoS: 7
-    if matches!(domain, 0 | 1 | 3 | 6 | 7) {
+    // Ethereum: 0, Avalanche: 1, OP Mainnet: 2, Arbitrum: 3, Base: 6, Polygon PoS: 7
+    if matches!(domain, 0 | 1 | 2 | 3 | 6 | 7) {
         for i in 0..12 {
             if recipient.get(i).unwrap_or(0) != 0 {
                 return false;

@@ -148,6 +148,7 @@ Set the contributor target to `PayoutTarget::Cctp(destination_domain, recipient)
 | --- | ---: |
 | Ethereum | `0` |
 | Avalanche | `1` |
+| OP Mainnet | `2` |
 | Arbitrum | `3` |
 | Solana | `5` |
 | Base | `6` |
@@ -204,6 +205,7 @@ trustless-oss/src/
 
 - 🧩 [Architecture guide](docs/arch.md) — system context, storage, state transitions, and authorization boundaries.
 - 📖 [Contract specification](docs/contract-spec.md) — all entry points, data model, errors, deployment details, and known limitations.
+- 🌍 [CCTP Live Testnet Report](docs/cctp_report.md) — live Stellar testnet evidence, contract addresses, remainder handling, and verification logs.
 - 🤝 [Contributing guide](docs/contributing.md) — local workflow, branch names, commits, and pull-request expectations.
 
 ## 🤝 Contributing

@@ -1894,3 +1894,130 @@ fn test_pause_resume_with_milestone_state() {
     let milestone_after = setup.client.get_milestone(&1);
     assert_eq!(milestone_after.status, MilestoneStatus::Active);
 }
+
+// ---------------------------------------------------------------------------
+// CCTP validation and truncation tests
+// ---------------------------------------------------------------------------
+
+fn valid_evm_recipient(env: &Env) -> soroban_sdk::BytesN<32> {
+    let mut bytes = [0u8; 32];
+    bytes[12..32].copy_from_slice(&[1u8; 20]);
+    soroban_sdk::BytesN::from_array(env, &bytes)
+}
+
+#[test]
+fn test_assign_contributor_invalid_domain() {
+    let setup = setup_pending_milestone(1_000_000, 500_000);
+    let recipient = valid_evm_recipient(&setup.env);
+
+    // Unknown domain 999
+    let res1 = setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Cctp(999, recipient.clone()));
+    assert_eq!(res1.unwrap_err().unwrap(), ContractError::InvalidDomain);
+
+    // Undocumented / dropped domain 4
+    let res2 = setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Cctp(4, recipient));
+    assert_eq!(res2.unwrap_err().unwrap(), ContractError::InvalidDomain);
+}
+
+#[test]
+fn test_assign_contributor_empty_recipient() {
+    let setup = setup_pending_milestone(1_000_000, 500_000);
+    let empty_recipient = soroban_sdk::BytesN::from_array(&setup.env, &[0u8; 32]);
+
+    let res = setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Cctp(0, empty_recipient));
+    assert_eq!(res.unwrap_err().unwrap(), ContractError::EmptyRecipient);
+}
+
+#[test]
+fn test_assign_contributor_invalid_evm_padding() {
+    let setup = setup_pending_milestone(1_000_000, 500_000);
+    let mut bad_bytes = [0u8; 32];
+    bad_bytes[0] = 1; // Non-zero in first 12 bytes
+    let bad_recipient = soroban_sdk::BytesN::from_array(&setup.env, &bad_bytes);
+
+    // Ethereum domain 0
+    let res1 = setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Cctp(0, bad_recipient.clone()));
+    assert_eq!(
+        res1.unwrap_err().unwrap(),
+        ContractError::InvalidCctpRecipientPadding
+    );
+
+    // OP Mainnet domain 2
+    let res2 = setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Cctp(2, bad_recipient));
+    assert_eq!(
+        res2.unwrap_err().unwrap(),
+        ContractError::InvalidCctpRecipientPadding
+    );
+}
+
+#[test]
+fn test_release_funds_cctp_truncation_remainder_returns_to_available() {
+    // Milestone reward: 10_000_003 stroops (1.0000003 USDC)
+    let setup = setup_pending_milestone(20_000_000, 10_000_003);
+    let recipient = valid_evm_recipient(&setup.env);
+
+    // Assign CCTP target (Base domain 6)
+    setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Cctp(6, recipient))
+        .unwrap()
+        .unwrap();
+
+    // Available before release = 20_000_000 - 10_000_003 = 9_999_997
+    let balance_before = setup.client.get_balance();
+    assert_eq!(balance_before.reserved, 10_000_003);
+    assert_eq!(balance_before.available, 9_999_997);
+
+    // Platform releases funds
+    setup.client.try_release_funds(&1).unwrap().unwrap();
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.status, MilestoneStatus::Released);
+    // Burned amount is truncated to 6 decimals (10_000_000)
+    assert_eq!(milestone.actual_released, 10_000_000);
+
+    let escrow = setup.client.get_escrow();
+    assert_eq!(escrow.reserved, 0); // Reserved is fully cleared
+    assert_eq!(escrow.total_released, 10_000_000);
+
+    // Available pool after release = 20_000_000 total_deposited - 0 reserved - 10_000_000 total_released = 10_000_000
+    // The 3 stroops remainder (7th decimal dust) is not locked in reserved, but freed into available pool!
+    let balance_after = setup.client.get_balance();
+    assert_eq!(balance_after.available, 10_000_000);
+    assert_eq!(balance_after.available - balance_before.available, 3);
+}
+
+#[test]
+fn test_release_funds_stellar_payout_target_regression() {
+    let setup = setup_pending_milestone(20_000_000, 10_000_003);
+    let contributor = Address::generate(&setup.env);
+
+    setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor.clone()))
+        .unwrap()
+        .unwrap();
+
+    setup.client.try_release_funds(&1).unwrap().unwrap();
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.status, MilestoneStatus::Released);
+    assert_eq!(milestone.actual_released, 10_000_003); // Full 7-decimal reward paid on Stellar
+
+    let escrow = setup.client.get_escrow();
+    assert_eq!(escrow.reserved, 0);
+    assert_eq!(escrow.total_released, 10_000_003);
+
+    let token_client = token::Client::new(&setup.env, &setup.token);
+    assert_eq!(token_client.balance(&contributor), 10_000_003);
+}

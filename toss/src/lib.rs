@@ -317,7 +317,7 @@ impl TOSSContract {
         storage::set_escrow(&env, &escrow);
         storage::set_milestone(&env, issue_id, &milestone);
 
-        events::emit_funds_released(&env, issue_id, contributor, reward);
+        events::emit_funds_released(&env, issue_id, contributor, release_amount);
 
         Ok(())
     }
