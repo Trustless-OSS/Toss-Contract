@@ -1,7 +1,8 @@
 use crate::types::{
     AdminTransferred, ContributorAssigned, ContributorReassigned, EscrowInitialized,
-    FundsDeposited, FundsReleased, FundsWithdrawn, MaintainerUpdated, MilestoneCancelled,
-    MilestoneCreated, MilestoneUpdated, PartialRelease, PayoutTarget, PlatformUpdated,
+    EscrowPaused, EscrowResumed, FundsDeposited, FundsReleased, FundsWithdrawn,
+    MaintainerUpdated, MilestoneCancelled, MilestoneCreated, MilestoneUpdated, PartialRelease,
+    PayoutTarget, PlatformUpdated,
 };
 use soroban_sdk::{Address, Env};
 
@@ -105,4 +106,12 @@ pub fn emit_maintainer_updated(env: &Env, old_maintainer: Address, new_maintaine
         new_maintainer,
     }
     .publish(env);
+}
+
+pub fn emit_escrow_paused(env: &Env) {
+    EscrowPaused.publish(env);
+}
+
+pub fn emit_escrow_resumed(env: &Env) {
+    EscrowResumed.publish(env);
 }

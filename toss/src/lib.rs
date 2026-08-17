@@ -441,6 +441,41 @@ impl TOSSContract {
         Ok(())
     }
 
+    pub fn pause_escrow(env: Env) -> Result<(), ContractError> {
+        let admin = storage::get_admin(&env).ok_or(ContractError::NotAdmin)?;
+        auth::require_admin(&admin);
+        let mut escrow = storage::get_escrow(&env)?;
+
+        if !escrow.is_active {
+            return Err(ContractError::EscrowInactive);
+        }
+
+        escrow.is_active = false;
+        storage::set_escrow(&env, &escrow);
+        events::emit_escrow_paused(&env);
+
+        Ok(())
+    }
+
+    /// Resumes the escrow, re-enabling all state-changing operations.
+    ///
+    /// Only the stored admin may call this method. The escrow must be paused (inactive).
+    pub fn resume_escrow(env: Env) -> Result<(), ContractError> {
+        let admin = storage::get_admin(&env).ok_or(ContractError::NotAdmin)?;
+        auth::require_admin(&admin);
+        let mut escrow = storage::get_escrow(&env)?;
+
+        if escrow.is_active {
+            return Err(ContractError::EscrowInactive);
+        }
+
+        escrow.is_active = true;
+        storage::set_escrow(&env, &escrow);
+        events::emit_escrow_resumed(&env);
+
+        Ok(())
+    }
+
     /// Retrieves the global state for this repository's escrow.
     pub fn get_escrow(env: Env) -> Result<EscrowState, ContractError> {
         storage::get_escrow(&env)

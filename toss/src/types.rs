@@ -147,3 +147,9 @@ pub struct MaintainerUpdated {
     pub old_maintainer: Address,
     pub new_maintainer: Address,
 }
+
+#[contractevent]
+pub struct EscrowPaused;
+
+#[contractevent]
+pub struct EscrowResumed;
