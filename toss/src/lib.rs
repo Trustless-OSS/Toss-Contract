@@ -452,7 +452,7 @@ impl TOSSContract {
 
         escrow.is_active = false;
         storage::set_escrow(&env, &escrow);
-        events::emit_escrow_paused(&env);
+        events::emit_escrow_paused(&env, escrow.repo_id);
 
         Ok(())
     }
@@ -471,7 +471,7 @@ impl TOSSContract {
 
         escrow.is_active = true;
         storage::set_escrow(&env, &escrow);
-        events::emit_escrow_resumed(&env);
+        events::emit_escrow_resumed(&env, escrow.repo_id);
 
         Ok(())
     }

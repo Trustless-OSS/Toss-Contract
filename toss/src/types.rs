@@ -149,9 +149,13 @@ pub struct MaintainerUpdated {
 }
 
 #[contractevent]
-#[derive(Clone, Debug)]
-pub struct EscrowPaused;
+pub struct EscrowPaused {
+    #[topic]
+    pub repo_id: u64,
+}
 
 #[contractevent]
-#[derive(Clone, Debug)]
-pub struct EscrowResumed;
+pub struct EscrowResumed {
+    #[topic]
+    pub repo_id: u64,
+}

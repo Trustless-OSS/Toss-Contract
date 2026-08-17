@@ -1666,10 +1666,9 @@ fn test_assign_contributor_blocked_when_paused() {
     setup.client.try_pause_escrow().unwrap().unwrap();
 
     let contributor = Address::generate(&setup.env);
-    let result =
-        setup
-            .client
-            .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor));
+    let result = setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor));
     assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
 }
 
@@ -1685,10 +1684,9 @@ fn test_reassign_contributor_blocked_when_paused() {
     setup.client.try_pause_escrow().unwrap().unwrap();
 
     let new_contributor = Address::generate(&setup.env);
-    let result =
-        setup
-            .client
-            .try_reassign_contributor(&1, &PayoutTarget::Stellar(new_contributor));
+    let result = setup
+        .client
+        .try_reassign_contributor(&1, &PayoutTarget::Stellar(new_contributor));
     assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
 }
 
@@ -1858,7 +1856,10 @@ fn test_pause_preserves_balances() {
     let balance_after = setup.client.get_balance();
 
     // Balances should not change
-    assert_eq!(balance_before.total_deposited, balance_after.total_deposited);
+    assert_eq!(
+        balance_before.total_deposited,
+        balance_after.total_deposited
+    );
     assert_eq!(balance_before.reserved, balance_after.reserved);
     assert_eq!(balance_before.available, balance_after.available);
     assert_eq!(balance_before.total_released, balance_after.total_released);
