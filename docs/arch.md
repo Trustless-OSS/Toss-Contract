@@ -72,7 +72,7 @@ flowchart LR
     class Queries query;
 ```
 
-All application keys are stored in Soroban persistent storage and writes extend their TTL to the configured `100_000` minimum and maximum values. `EscrowIssueIds` is the index used by `list_milestones`; each milestone is stored separately under its issue ID.
+All application keys are stored in Soroban persistent storage and writes extend their TTL to the configured `100_000` minimum and maximum values. `EscrowIssueIds` is the index used by `list_milestones`, which returns pages of at most 50 milestones via `list_milestones(offset, limit)`; each milestone is stored separately under its issue ID.
 
 The deployed contract has one `EscrowState`, not a map of escrow IDs. Its state tracks:
 

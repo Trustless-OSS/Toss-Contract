@@ -34,4 +34,5 @@ pub enum ContractError {
     EmptyRecipient = 51,
     ZeroBurnAmount = 52,
     InvalidCctpRecipientPadding = 53,
+    ZeroPageLimit = 60, // list_milestones rejects limit == 0
 }

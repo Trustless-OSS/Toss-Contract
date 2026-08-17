@@ -1,4 +1,4 @@
-use soroban_sdk::{contractevent, contracttype, Address, BytesN, String};
+use soroban_sdk::{contractevent, contracttype, Address, BytesN};
 
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
@@ -21,7 +21,6 @@ pub enum MilestoneStatus {
 #[derive(Clone, Debug)]
 pub struct Milestone {
     pub issue_id: u64,
-    pub title: String,
     pub reward: i128, // in stroops (1 USDC = 10_000_000)
     pub contributor: PayoutTarget,
     pub status: MilestoneStatus,

@@ -191,7 +191,6 @@ fn test_storage_milestone_roundtrip() {
 
     let milestone = Milestone {
         issue_id: 100,
-        title: String::from_str(&env, "Fix critical bug"),
         reward: 50_000_000,
         contributor: PayoutTarget::None,
         status: MilestoneStatus::Pending,
@@ -207,7 +206,6 @@ fn test_storage_milestone_roundtrip() {
     env.as_contract(&contract_id, || {
         let loaded = storage::get_milestone(&env, 100).unwrap();
         assert_eq!(loaded.issue_id, 100);
-        assert_eq!(loaded.title, String::from_str(&env, "Fix critical bug"));
         assert_eq!(loaded.reward, 50_000_000);
         assert_eq!(loaded.contributor, PayoutTarget::None);
         assert_eq!(loaded.status, MilestoneStatus::Pending);
@@ -334,7 +332,6 @@ fn test_ttl_extended_on_milestone_write() {
 
     let milestone = Milestone {
         issue_id: 1,
-        title: String::from_str(&env, "Test"),
         reward: 100_000_000,
         contributor: PayoutTarget::None,
         status: MilestoneStatus::Pending,
@@ -407,6 +404,22 @@ fn test_get_balance_after_initialize() {
 // list_milestones
 // ---------------------------------------------------------------------------
 
+/// Funds the escrow and creates `count` milestones (`issue_id`s 1..=count),
+/// each reserving `reward`. Returns the ready-to-use setup.
+fn setup_milestones(count: u32, reward: i128) -> FundingSetup {
+    let total = reward * count as i128;
+    let setup = setup_funding_env(total);
+    setup.client.try_deposit_funds(&total).unwrap().unwrap();
+    for i in 1..=count {
+        setup
+            .client
+            .try_create_milestone(&(i as u64), &reward)
+            .unwrap()
+            .unwrap();
+    }
+    setup
+}
+
 #[test]
 fn test_list_milestones_empty_after_init() {
     let (env, contract_id) = setup_env();
@@ -417,8 +430,96 @@ fn test_list_milestones_empty_after_init() {
     let result = c.try_initialize(&1, &maintainer, &platform, &token);
     assert!(result.is_ok());
 
-    let milestones = c.list_milestones();
+    let milestones = c.list_milestones(&0, &50);
     assert_eq!(milestones.len(), 0);
+}
+
+#[test]
+fn test_list_milestones_first_page() {
+    let setup = setup_milestones(5, 100);
+
+    let milestones = setup.client.list_milestones(&0, &2);
+    assert_eq!(milestones.len(), 2);
+    assert_eq!(milestones.get(0).unwrap().issue_id, 1);
+    assert_eq!(milestones.get(1).unwrap().issue_id, 2);
+}
+
+#[test]
+fn test_list_milestones_pages_cover_all() {
+    let setup = setup_milestones(5, 100);
+
+    // Contiguous pages walk the whole list in creation order.
+    let page1 = setup.client.list_milestones(&0, &2);
+    assert_eq!(page1.len(), 2);
+    assert_eq!(page1.get(0).unwrap().issue_id, 1);
+    assert_eq!(page1.get(1).unwrap().issue_id, 2);
+
+    let page2 = setup.client.list_milestones(&2, &2);
+    assert_eq!(page2.len(), 2);
+    assert_eq!(page2.get(0).unwrap().issue_id, 3);
+    assert_eq!(page2.get(1).unwrap().issue_id, 4);
+
+    // A short final page returns just what remains.
+    let page3 = setup.client.list_milestones(&4, &2);
+    assert_eq!(page3.len(), 1);
+    assert_eq!(page3.get(0).unwrap().issue_id, 5);
+}
+
+#[test]
+fn test_list_milestones_past_end_offset() {
+    let setup = setup_milestones(3, 100);
+
+    // Offset exactly at the end, and far past it, both return empty.
+    assert_eq!(setup.client.list_milestones(&3, &10).len(), 0);
+    assert_eq!(setup.client.list_milestones(&100, &10).len(), 0);
+}
+
+#[test]
+fn test_list_milestones_zero_limit_rejected() {
+    let setup = setup_milestones(3, 100);
+
+    let result = setup.client.try_list_milestones(&0, &0);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroPageLimit);
+}
+
+#[test]
+fn test_list_milestones_limit_capped() {
+    let setup = setup_milestones(60, 10);
+
+    // A limit above the cap is clamped to the public 50-item page cap.
+    let page = setup.client.list_milestones(&0, &100);
+    assert_eq!(page.len(), 50);
+    assert_eq!(page.get(0).unwrap().issue_id, 1);
+
+    // The remainder is reachable past the first page.
+    let rest = setup.client.list_milestones(&50, &100);
+    assert_eq!(rest.len(), 10);
+    assert_eq!(rest.get(0).unwrap().issue_id, 51);
+}
+
+// ---------------------------------------------------------------------------
+// get_milestone_count
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_get_milestone_count_after_init() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap();
+
+    assert_eq!(c.get_milestone_count(), 0);
+}
+
+#[test]
+fn test_get_milestone_count_matches_list() {
+    let setup = setup_milestones(4, 100);
+
+    assert_eq!(setup.client.get_milestone_count(), 4);
+    assert_eq!(setup.client.list_milestones(&0, &50).len(), 4);
 }
 
 // ---------------------------------------------------------------------------
@@ -460,7 +561,6 @@ fn test_release_funds_not_active_panics() {
 
     let milestone = Milestone {
         issue_id: 1,
-        title: String::from_str(&env, "Test"),
         reward: 100,
         contributor: PayoutTarget::Stellar(Address::generate(&env)),
         status: MilestoneStatus::Pending,
@@ -488,7 +588,6 @@ fn test_release_funds_contributor_not_set() {
 
     let milestone = Milestone {
         issue_id: 2,
-        title: String::from_str(&env, "Test 2"),
         reward: 100,
         contributor: PayoutTarget::None,
         status: MilestoneStatus::Active,
@@ -516,7 +615,6 @@ fn test_partial_release_too_large() {
 
     let milestone = Milestone {
         issue_id: 3,
-        title: String::from_str(&env, "Test 3"),
         reward: 100,
         contributor: PayoutTarget::Stellar(Address::generate(&env)),
         status: MilestoneStatus::Active,
@@ -695,7 +793,6 @@ fn test_withdraw_respects_reserved() {
 
         let milestone = Milestone {
             issue_id: 99,
-            title: String::from_str(&setup.env, "Reserved milestone"),
             reward: 300,
             contributor: PayoutTarget::Stellar(Address::generate(&setup.env)),
             status: MilestoneStatus::Active,
@@ -741,7 +838,6 @@ fn test_release_funds_transfers_to_stellar_contributor() {
     setup.env.as_contract(&setup.contract_id, || {
         let milestone = Milestone {
             issue_id: 1,
-            title: String::from_str(&setup.env, "Stellar payout"),
             reward: 500,
             contributor: PayoutTarget::Stellar(contributor.clone()),
             status: MilestoneStatus::Active,
@@ -780,7 +876,6 @@ fn test_partial_release_transfers_to_stellar_contributor() {
     setup.env.as_contract(&setup.contract_id, || {
         let milestone = Milestone {
             issue_id: 1,
-            title: String::from_str(&setup.env, "Partial Stellar payout"),
             reward: 500,
             contributor: PayoutTarget::Stellar(contributor.clone()),
             status: MilestoneStatus::Active,
@@ -822,7 +917,6 @@ fn test_cctp_invalid_domain() {
     setup.env.as_contract(&setup.contract_id, || {
         let milestone = Milestone {
             issue_id: 2,
-            title: String::from_str(&setup.env, "CCTP invalid domain"),
             reward: 500,
             contributor: PayoutTarget::Cctp(
                 999,
@@ -852,7 +946,6 @@ fn test_cctp_empty_recipient() {
     setup.env.as_contract(&setup.contract_id, || {
         let milestone = Milestone {
             issue_id: 3,
-            title: String::from_str(&setup.env, "CCTP empty recipient"),
             reward: 500,
             contributor: PayoutTarget::Cctp(
                 0,
@@ -882,7 +975,6 @@ fn test_cctp_zero_burn_amount() {
     setup.env.as_contract(&setup.contract_id, || {
         let milestone = Milestone {
             issue_id: 4,
-            title: String::from_str(&setup.env, "CCTP zero burn amount"),
             reward: 5, // < 10 stroops, normalizes to 0
             contributor: PayoutTarget::Cctp(
                 5,
@@ -915,7 +1007,6 @@ fn test_cctp_release_exact_multiple() {
     setup.env.as_contract(&setup.contract_id, || {
         let milestone = Milestone {
             issue_id: 5,
-            title: String::from_str(&setup.env, "CCTP exact multiple"),
             reward: 500, // exact multiple of 10
             contributor: PayoutTarget::Cctp(
                 0,
@@ -955,7 +1046,6 @@ fn test_cctp_release_non_multiple() {
     setup.env.as_contract(&setup.contract_id, || {
         let milestone = Milestone {
             issue_id: 6,
-            title: String::from_str(&setup.env, "CCTP non multiple"),
             reward: 507, // non multiple of 10
             contributor: PayoutTarget::Cctp(
                 0,
@@ -1019,7 +1109,6 @@ fn test_cctp_valid_solana_recipient() {
     setup.env.as_contract(&setup.contract_id, || {
         let milestone = Milestone {
             issue_id: 1,
-            title: String::from_str(&setup.env, "Solana recipient"),
             reward: 500,
             contributor: PayoutTarget::None,
             status: MilestoneStatus::Pending,
@@ -1250,28 +1339,25 @@ fn test_update_maintainer_rejects_non_admin() {
 fn setup_pending_milestone(deposit: i128, reward: i128) -> FundingSetup {
     let setup = setup_funding_env(deposit);
     setup.client.try_deposit_funds(&deposit).unwrap().unwrap();
-    let title = String::from_str(&setup.env, "Original title");
     setup
         .client
-        .try_create_milestone(&1, &title, &reward)
+        .try_create_milestone(&1, &reward)
         .unwrap()
         .unwrap();
     setup
 }
 
 #[test]
-fn test_update_milestone_title_only() {
+fn test_update_milestone_same_reward_keeps_reservation() {
     let setup = setup_pending_milestone(1_000, 300);
 
-    let new_title = String::from_str(&setup.env, "Fixed typo in title");
     setup
         .client
-        .try_update_milestone(&1, &new_title, &300)
+        .try_update_milestone(&1, &300)
         .unwrap()
         .unwrap();
 
     let milestone = setup.client.get_milestone(&1);
-    assert_eq!(milestone.title, new_title);
     assert_eq!(milestone.reward, 300);
     assert_eq!(milestone.status, MilestoneStatus::Pending);
 
@@ -1285,10 +1371,9 @@ fn test_update_milestone_title_only() {
 fn test_update_milestone_reward_increase_within_balance() {
     let setup = setup_pending_milestone(1_000, 300);
 
-    let title = String::from_str(&setup.env, "Bumped reward");
     setup
         .client
-        .try_update_milestone(&1, &title, &800)
+        .try_update_milestone(&1, &800)
         .unwrap()
         .unwrap();
 
@@ -1306,8 +1391,7 @@ fn test_update_milestone_reward_increase_exceeding_balance() {
 
     // Available is 700 on top of the 300 already reserved; asking for 1_100
     // (a delta of 800) can't fit.
-    let title = String::from_str(&setup.env, "Too greedy");
-    let result = setup.client.try_update_milestone(&1, &title, &1_100);
+    let result = setup.client.try_update_milestone(&1, &1_100);
     assert_eq!(
         result.unwrap_err().unwrap(),
         ContractError::InsufficientBalance
@@ -1324,10 +1408,9 @@ fn test_update_milestone_reward_decrease_frees_available() {
     let setup = setup_pending_milestone(1_000, 800);
     assert_eq!(setup.client.get_balance().available, 200);
 
-    let title = String::from_str(&setup.env, "Trimmed reward");
     setup
         .client
-        .try_update_milestone(&1, &title, &500)
+        .try_update_milestone(&1, &500)
         .unwrap()
         .unwrap();
 
@@ -1341,10 +1424,9 @@ fn test_update_milestone_reward_increase_to_full_available() {
     let setup = setup_pending_milestone(1_000, 300);
 
     // Delta of 700 exactly consumes the remaining available balance.
-    let title = String::from_str(&setup.env, "Exact fit");
     setup
         .client
-        .try_update_milestone(&1, &title, &1_000)
+        .try_update_milestone(&1, &1_000)
         .unwrap()
         .unwrap();
 
@@ -1356,24 +1438,21 @@ fn test_update_milestone_reward_increase_to_full_available() {
 #[test]
 fn test_update_milestone_zero_reward_rejected() {
     let setup = setup_pending_milestone(1_000, 300);
-    let title = String::from_str(&setup.env, "Zero");
-    let result = setup.client.try_update_milestone(&1, &title, &0);
+    let result = setup.client.try_update_milestone(&1, &0);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroAmount);
 }
 
 #[test]
 fn test_update_milestone_negative_reward_rejected() {
     let setup = setup_pending_milestone(1_000, 300);
-    let title = String::from_str(&setup.env, "Negative");
-    let result = setup.client.try_update_milestone(&1, &title, &-50);
+    let result = setup.client.try_update_milestone(&1, &-50);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroAmount);
 }
 
 #[test]
 fn test_update_milestone_missing_milestone_rejected() {
     let setup = setup_pending_milestone(1_000, 300);
-    let title = String::from_str(&setup.env, "Ghost");
-    let result = setup.client.try_update_milestone(&99, &title, &100);
+    let result = setup.client.try_update_milestone(&99, &100);
     assert_eq!(
         result.unwrap_err().unwrap(),
         ContractError::MilestoneNotFound
@@ -1390,8 +1469,7 @@ fn test_update_milestone_on_active_rejected() {
         .unwrap()
         .unwrap();
 
-    let title = String::from_str(&setup.env, "Cannot edit active");
-    let result = setup.client.try_update_milestone(&1, &title, &400);
+    let result = setup.client.try_update_milestone(&1, &400);
     assert_eq!(
         result.unwrap_err().unwrap(),
         ContractError::MilestoneNotPending
@@ -1403,8 +1481,7 @@ fn test_update_milestone_on_cancelled_rejected() {
     let setup = setup_pending_milestone(1_000, 300);
     setup.client.try_cancel_milestone(&1).unwrap().unwrap();
 
-    let title = String::from_str(&setup.env, "Cannot edit cancelled");
-    let result = setup.client.try_update_milestone(&1, &title, &400);
+    let result = setup.client.try_update_milestone(&1, &400);
     assert_eq!(
         result.unwrap_err().unwrap(),
         ContractError::MilestoneNotPending
@@ -1421,7 +1498,6 @@ fn test_update_milestone_on_released_rejected() {
     setup.env.as_contract(&setup.contract_id, || {
         let milestone = Milestone {
             issue_id: 7,
-            title: String::from_str(&setup.env, "Done"),
             reward: 500,
             contributor: PayoutTarget::Stellar(contributor),
             status: MilestoneStatus::Released,
@@ -1432,8 +1508,7 @@ fn test_update_milestone_on_released_rejected() {
         storage::set_milestone(&setup.env, 7, &milestone);
     });
 
-    let title = String::from_str(&setup.env, "Cannot edit released");
-    let result = setup.client.try_update_milestone(&7, &title, &400);
+    let result = setup.client.try_update_milestone(&7, &400);
     assert_eq!(
         result.unwrap_err().unwrap(),
         ContractError::MilestoneNotPending
@@ -1445,18 +1520,16 @@ fn test_update_milestone_on_released_rejected() {
 fn test_update_milestone_requires_maintainer() {
     let setup = setup_pending_milestone(1_000, 300);
     setup.env.set_auths(&[]);
-    let title = String::from_str(&setup.env, "No auth");
-    setup.client.update_milestone(&1, &title, &400);
+    setup.client.update_milestone(&1, &400);
 }
 
 #[test]
 fn test_update_milestone_emits_event() {
     let setup = setup_pending_milestone(1_000, 300);
 
-    let title = String::from_str(&setup.env, "With event");
     setup
         .client
-        .try_update_milestone(&1, &title, &450)
+        .try_update_milestone(&1, &450)
         .unwrap()
         .unwrap();
 
