@@ -25,7 +25,7 @@ pub enum ContractError {
     MilestoneNotPending = 31, // assign_contributor requires Pending
     MilestoneNotActive = 32,  // release/cancel requires Active
     DuplicateIssueId = 33,
-    ReleaseTooLarge = 34, // partial_release amount > milestone reward
+    ReleaseTooLarge = 34, // release_funds amount > milestone reward
 
     // Contributor
     ContributorNotSet = 40,

@@ -59,7 +59,7 @@ flowchart LR
     Assign[assign / reassign contributor] --> Milestone
     Cancel[cancel_milestone] --> Escrow
     Cancel --> Milestone
-    Release[release / partial_release] --> Escrow
+    Release[release_funds] --> Escrow
     Release --> Milestone
     Queries[get_escrow / get_balance / list_milestones] -. read .-> Escrow
     Queries -. read .-> Milestone
@@ -89,7 +89,6 @@ stateDiagram-v2
     Pending --> Active: assign_contributor
     Active --> Active: reassign_contributor
     Active --> Released: release_funds
-    Active --> Released: partial_release
     Pending --> Cancelled: cancel_milestone
     Active --> Cancelled: cancel_milestone
     Released --> [*]
@@ -105,7 +104,7 @@ stateDiagram-v2
     class Cancelled cancelled;
 ```
 
-Creating a milestone reserves its full reward. Assignment changes the payout target and status but does not change the reserved amount. A full release pays the full reward; a partial release pays the requested amount and makes the remainder available again. Cancellation un-reserves the full reward without transferring funds.
+Creating a milestone reserves its full reward. Assignment changes the payout target and status but does not change the reserved amount. A release pays the requested amount, at most the full reward; any unpaid remainder becomes available again. Cancellation un-reserves the full reward without transferring funds.
 
 ## Payout sequence
 
@@ -116,7 +115,7 @@ sequenceDiagram
     participant T as USDC SAC
     participant S as Stellar contributor
 
-    W->>C: release_funds(issue_id)
+    W->>C: release_funds(issue_id, amount)
     C->>C: require platform auth
     C->>C: validate Active milestone
     C->>T: transfer(contract, contributor, amount)
@@ -134,7 +133,7 @@ sequenceDiagram
 | Later `initialize` calls | The stored admin authorizes; the existing escrow still prevents reinitialization. |
 | `deposit_funds`, `withdraw_funds` | Maintainer. |
 | `create_milestone`, `assign_contributor`, `reassign_contributor`, `cancel_milestone` | Maintainer. |
-| `release_funds`, `partial_release` | Platform wallet. |
+| `release_funds` | Platform wallet. |
 | Query entry points | No explicit caller authorization. |
 
 ## Related documentation

@@ -67,8 +67,7 @@ flowchart LR
 ```mermaid
 flowchart LR
   Pending["🆕 Pending"] -->|assign contributor| Active["⚡ Active"]
-  Active -->|release| Released["✅ Released"]
-  Active -->|partial release| Released
+  Active -->|release_funds| Released["✅ Released"]
   Active -->|cancel| Cancelled["🚫 Cancelled"]
   Pending -->|cancel| Cancelled
 
@@ -83,7 +82,7 @@ flowchart LR
   class Cancelled cancelled;
 ```
 
-> 💡 Creating a milestone reserves its full reward. A cancellation returns the entire reward to the available pool; a partial release returns only the unpaid remainder.
+> 💡 Creating a milestone reserves its full reward. A cancellation returns the entire reward to the available pool; releasing less than the full reward makes the unpaid remainder available again.
 
 ## ⚡ Quick start
 
@@ -129,14 +128,14 @@ target/wasm32-unknown-unknown/release/trustless_oss.wasm
 | 🏗️ Create escrow | `initialize` | Maintainer on the first call |
 | 💰 Fund or withdraw | `deposit_funds` / `withdraw_funds` | Maintainer |
 | 🎯 Manage milestones | `create_milestone`, `assign_contributor`, `reassign_contributor`, `cancel_milestone` | Maintainer |
-| 💸 Pay contributors | `release_funds` / `partial_release` | Platform wallet |
+| 💸 Pay contributors | `release_funds(issue_id, amount)` | Platform wallet |
 | 🔎 Read contract state | `get_escrow`, `get_milestone`, `get_balance`, `list_milestones`, `get_milestone_count` | Public |
 
 Amounts use token base units. For a 7-decimal USDC token, `10_000_000` base units equals **1 USDC**.
 
 ## 🌍 Cross-chain payouts with CCTP
 
-TOSS can pay contributors beyond Stellar through **CCTP**. When a milestone is assigned a CCTP target, a full or partial release calls CCTP's `deposit_for_burn` flow: USDC is burned on Stellar and can be redeemed for the specified recipient on the destination chain.
+TOSS can pay contributors beyond Stellar through **CCTP**. When a milestone is assigned a CCTP target, `release_funds` calls CCTP's `deposit_for_burn` flow: USDC is burned on Stellar and can be redeemed for the specified recipient on the destination chain.
 
 ```text
 🔒 Stellar USDC escrow → 🔥 CCTP burn → 📡 attestation and redemption → 🌍 recipient on destination chain
