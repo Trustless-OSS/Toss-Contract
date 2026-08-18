@@ -304,9 +304,7 @@ impl TOSSContract {
 
         if amount <= 0 {
             panic_with_error!(&env, ContractError::ZeroAmount);
-        }
-
-        if amount > milestone.reward {
+        } else if amount > milestone.reward {
             panic_with_error!(&env, ContractError::ReleaseTooLarge);
         }
 
