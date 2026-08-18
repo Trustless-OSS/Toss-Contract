@@ -26,7 +26,7 @@ pub struct Milestone {
     pub status: MilestoneStatus,
     pub created_at: u64, // ledger timestamp
     pub released_at: Option<u64>,
-    pub actual_released: i128, // 0 unless a partial or truncated release occurred
+    pub actual_released: i128, // 0 until released; then what actually left the contract
 }
 
 #[contracttype]

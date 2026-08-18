@@ -628,7 +628,61 @@ fn test_release_funds_too_large() {
     });
 
     let result = c.try_release_funds(&3, &150);
-    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::ReleaseTooLarge);
+}
+
+#[test]
+fn test_release_funds_zero_amount_panics() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap();
+
+    let milestone = Milestone {
+        issue_id: 4,
+        reward: 100,
+        contributor: PayoutTarget::Stellar(Address::generate(&env)),
+        status: MilestoneStatus::Active,
+        created_at: 100,
+        released_at: None,
+        actual_released: 0,
+    };
+    env.as_contract(&contract_id, || {
+        storage::set_milestone(&env, 4, &milestone);
+    });
+
+    let result = c.try_release_funds(&4, &0);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroAmount);
+}
+
+#[test]
+fn test_release_funds_negative_amount_panics() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, token) = addresses(&env);
+    c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap();
+
+    let milestone = Milestone {
+        issue_id: 5,
+        reward: 100,
+        contributor: PayoutTarget::Stellar(Address::generate(&env)),
+        status: MilestoneStatus::Active,
+        created_at: 100,
+        released_at: None,
+        actual_released: 0,
+    };
+    env.as_contract(&contract_id, || {
+        storage::set_milestone(&env, 5, &milestone);
+    });
+
+    let result = c.try_release_funds(&5, &-50);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroAmount);
 }
 
 // ---------------------------------------------------------------------------
@@ -1028,6 +1082,65 @@ fn test_cctp_zero_burn_amount() {
 
     let result = setup.client.try_release_funds(&4, &5);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroBurnAmount);
+}
+
+#[test]
+fn test_cctp_release_zero_amount_rejected() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let milestone = Milestone {
+            issue_id: 7,
+            reward: 500,
+            contributor: PayoutTarget::Cctp(
+                5,
+                soroban_sdk::BytesN::from_array(&setup.env, &[1; 32]),
+            ),
+            status: MilestoneStatus::Active,
+            created_at: 100,
+            released_at: None,
+            actual_released: 0,
+        };
+        storage::set_milestone(&setup.env, 7, &milestone);
+
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.reserved += 500;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    // Zero is rejected by the amount guard before truncation or burn checks.
+    let result = setup.client.try_release_funds(&7, &0);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroAmount);
+}
+
+#[test]
+fn test_cctp_release_negative_amount_rejected() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let milestone = Milestone {
+            issue_id: 8,
+            reward: 500,
+            contributor: PayoutTarget::Cctp(
+                5,
+                soroban_sdk::BytesN::from_array(&setup.env, &[1; 32]),
+            ),
+            status: MilestoneStatus::Active,
+            created_at: 100,
+            released_at: None,
+            actual_released: 0,
+        };
+        storage::set_milestone(&setup.env, 8, &milestone);
+
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.reserved += 500;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    let result = setup.client.try_release_funds(&8, &-10);
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroAmount);
 }
 
 #[test]

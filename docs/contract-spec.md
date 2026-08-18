@@ -15,7 +15,7 @@ The contract exposes the following public methods:
 | `update_milestone(issue_id, reward)` | Maintainer | Edits the reward of a pending milestone, adjusting the reservation by the delta. |
 | `assign_contributor(issue_id, contributor)` | Maintainer | Sets the payout target and moves a pending milestone to active. |
 | `reassign_contributor(issue_id, contributor)` | Maintainer | Changes the payout target of an active milestone. |
-| `release_funds(issue_id, amount)` | Platform | Pays up to the full reward and marks the milestone released; any unpaid remainder is returned to the available pool. |
+| `release_funds(issue_id, amount)` | Platform | Pays up to the full reward and marks the milestone released; any unpaid remainder is returned to the available pool. An `amount` of zero or less is rejected with `ZeroAmount`. |
 | `cancel_milestone(issue_id)` | Maintainer | Cancels a pending or active milestone and un-reserves its reward. |
 | `get_escrow()` | None | Reads the escrow state. |
 | `get_milestone(issue_id)` | None | Reads one milestone. |
