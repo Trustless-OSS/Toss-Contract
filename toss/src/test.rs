@@ -16,11 +16,11 @@ pub struct MockCctpContract;
 #[soroban_sdk::contractimpl]
 impl MockCctpContract {
     pub fn deposit_for_burn(
-        env: Env,
-        amount: i128,
-        destination_domain: u32,
-        mint_recipient: soroban_sdk::BytesN<32>,
-        mint_token: Address,
+        _env: Env,
+        _amount: i128,
+        _destination_domain: u32,
+        _mint_recipient: soroban_sdk::BytesN<32>,
+        _mint_token: Address,
     ) -> u64 {
         // Just return a dummy value
         1
@@ -39,14 +39,14 @@ fn setup_env() -> (Env, soroban_sdk::Address) {
         min_persistent_entry_ttl: 10000,
         max_entry_ttl: 200000,
     });
-    let contract_id = env.register_contract(None, TOSSContract);
+    let contract_id = env.register(TOSSContract, ());
 
     // Register mock CCTP contract
     let cctp_address = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(
         &env,
         cctp::CCTP_TOKEN_MESSENGER_MINTER,
     ));
-    env.register_contract(Some(&cctp_address), MockCctpContract);
+    env.register_at(&cctp_address, MockCctpContract, ());
 
     (env, contract_id)
 }
@@ -510,6 +510,7 @@ fn test_get_milestone_count_after_init() {
 
     let (maintainer, platform, token) = addresses(&env);
     c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
         .unwrap();
 
     assert_eq!(c.get_milestone_count(), 0);
@@ -558,6 +559,7 @@ fn test_release_funds_not_active_panics() {
 
     let (maintainer, platform, token) = addresses(&env);
     c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
         .unwrap();
 
     let milestone = Milestone {
@@ -585,6 +587,7 @@ fn test_release_funds_contributor_not_set() {
 
     let (maintainer, platform, token) = addresses(&env);
     c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
         .unwrap();
 
     let milestone = Milestone {
@@ -612,6 +615,7 @@ fn test_release_funds_too_large() {
 
     let (maintainer, platform, token) = addresses(&env);
     c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
         .unwrap();
 
     let milestone = Milestone {
@@ -639,6 +643,7 @@ fn test_release_funds_zero_amount_panics() {
 
     let (maintainer, platform, token) = addresses(&env);
     c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
         .unwrap();
 
     let milestone = Milestone {
@@ -666,6 +671,7 @@ fn test_release_funds_negative_amount_panics() {
 
     let (maintainer, platform, token) = addresses(&env);
     c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
         .unwrap();
 
     let milestone = Milestone {
@@ -1679,7 +1685,7 @@ fn test_cctp_valid_solana_recipient() {
     let setup = setup_funding_env(1_000);
     setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
 
-    let mut solana_recipient = [1u8; 32]; // non-zero high bytes
+    let solana_recipient = [1u8; 32]; // non-zero high bytes
 
     setup.env.as_contract(&setup.contract_id, || {
         let milestone = Milestone {
@@ -1719,6 +1725,7 @@ fn test_transfer_admin_success() {
 
     let (maintainer, platform, token) = addresses(&env);
     c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
         .unwrap();
 
     let new_admin = Address::generate(&env);
@@ -1757,6 +1764,7 @@ fn test_update_platform_success() {
 
     let (maintainer, platform, token) = addresses(&env);
     c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
         .unwrap();
 
     let new_platform = Address::generate(&env);
@@ -1793,6 +1801,7 @@ fn test_update_maintainer_success() {
 
     let (maintainer, platform, token) = addresses(&env);
     c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
         .unwrap();
 
     let new_maintainer = Address::generate(&env);
@@ -1829,10 +1838,11 @@ fn test_old_platform_rejected_after_update() {
 
     let (maintainer, platform, token) = addresses(&env);
     c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
         .unwrap();
 
     let new_platform = Address::generate(&env);
-    c.try_update_platform(&new_platform).unwrap();
+    c.try_update_platform(&new_platform).unwrap().unwrap();
 
     let escrow = c.get_escrow();
     assert_eq!(escrow.platform, new_platform);
@@ -1847,10 +1857,11 @@ fn test_old_maintainer_rejected_after_update() {
 
     let (maintainer, platform, token) = addresses(&env);
     c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
         .unwrap();
 
     let new_maintainer = Address::generate(&env);
-    c.try_update_maintainer(&new_maintainer).unwrap();
+    c.try_update_maintainer(&new_maintainer).unwrap().unwrap();
 
     let escrow = c.get_escrow();
     assert_eq!(escrow.maintainer, new_maintainer);
@@ -1866,6 +1877,7 @@ fn test_transfer_admin_rejects_non_admin() {
 
     let (maintainer, platform, token) = addresses(&env);
     c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
         .unwrap();
 
     env.set_auths(&[]);
@@ -1882,6 +1894,7 @@ fn test_update_platform_rejects_non_admin() {
 
     let (maintainer, platform, token) = addresses(&env);
     c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
         .unwrap();
 
     env.set_auths(&[]);
@@ -1898,6 +1911,7 @@ fn test_update_maintainer_rejects_non_admin() {
 
     let (maintainer, platform, token) = addresses(&env);
     c.try_initialize(&1, &maintainer, &platform, &token)
+        .unwrap()
         .unwrap();
 
     env.set_auths(&[]);
