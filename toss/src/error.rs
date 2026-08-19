@@ -19,6 +19,7 @@ pub enum ContractError {
     InsufficientBalance = 20, // deposit would leave pool underfunded
     WithdrawExceedsAvailable = 21,
     ZeroAmount = 22,
+    BalanceInvariantBroken = 23,
 
     // Milestone
     MilestoneNotFound = 30,
