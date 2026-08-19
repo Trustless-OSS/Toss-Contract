@@ -1627,6 +1627,33 @@ fn test_release_rejects_reserved_underflow_without_mutating_milestone() {
 }
 
 #[test]
+fn test_cancel_rejects_reserved_underflow_without_mutating_milestone() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+    setup
+        .client
+        .try_create_milestone(&1, &300)
+        .unwrap()
+        .unwrap();
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.reserved = 100;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    let result = setup.client.try_cancel_milestone(&1);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::BalanceInvariantBroken
+    );
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.status, MilestoneStatus::Pending);
+    assert_eq!(milestone.actual_released, 0);
+}
+
+#[test]
 fn test_cctp_invalid_padding() {
     let setup = setup_funding_env(1_000);
     setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
