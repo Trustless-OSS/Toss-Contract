@@ -4,18 +4,24 @@ Issue: [Trustless-OSS/Toss-Contract #23](https://github.com/Trustless-OSS/Toss-C
 Branch: `test/cctp-cross-chain-release`
 Date: 2026-08-19
 Network: Stellar Testnet + EVM Testnets (Sepolia, Base Sepolia)
+
+Explorers used in this report:
+- Stellar testnet: [stellar.expert](https://stellar.expert/explorer/testnet)
+- Ethereum Sepolia: [sepolia.etherscan.io](https://sepolia.etherscan.io)
+- Base Sepolia: [sepolia.basescan.org](https://sepolia.basescan.org)
+
 USDC SAC: `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA` (Stellar testnet)
 
 ---
 
 ## 1. Contract deployment
 
-| Field | Value |
-| --- | --- |
-| Testnet contract ID | `CDDBKY2Q4RPRMEQP2F24TIBDX6MTZTKZ3WACQW5PN3Z7GXEWDAF5RJDK` |
-| WASM deploy tx | `effcc9d20f6c73fc0af879eb11bffc745eb42086aaed56e491aaa41b119e6293` |
-| TokenMessenger Minter (testnet, named constant `CCTP_TOKEN_MESSENGER_MINTER`) | `CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP` ([Circle docs](https://developers.circle.com/stablecoins/docs/stellar-cctp-contract-addresses)) |
-| MessageTransmitter (testnet, named constant `CCTP_MESSAGE_TRANSMITTER`) | `CBJ6MTCKKZG73PMDZCJMSFRD7DQEMI4FKDH7CGDSV4W6FHCRBCQAVVJY` (same Circle docs source) |
+| Field | Value | Explorer link |
+| --- | --- | --- |
+| Testnet contract ID | `CDDBKY2Q4RPRMEQP2F24TIBDX6MTZTKZ3WACQW5PN3Z7GXEWDAF5RJDK` | [stellar.expert](https://stellar.expert/explorer/testnet/contract/CDDBKY2Q4RPRMEQP2F24TIBDX6MTZTKZ3WACQW5PN3Z7GXEWDAF5RJDK) |
+| WASM deploy tx | `effcc9d20f6c73fc0af879eb11bffc745eb42086aaed56e491aaa41b119e6293` | [view tx](https://stellar.expert/explorer/testnet/tx/effcc9d20f6c73fc0af879eb11bffc745eb42086aaed56e491aaa41b119e6293) |
+| TokenMessenger Minter (testnet, named constant `CCTP_TOKEN_MESSENGER_MINTER`) | `CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP` ([Circle docs](https://developers.circle.com/stablecoins/docs/stellar-cctp-contract-addresses)) | [stellar.expert](https://stellar.expert/explorer/testnet/contract/CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP) |
+| MessageTransmitter (testnet, named constant `CCTP_MESSAGE_TRANSMITTER`) | `CBJ6MTCKKZG73PMDZCJMSFRD7DQEMI4FKDH7CGDSV4W6FHCRBCQAVVJY` (same Circle docs source) | [stellar.expert](https://stellar.expert/explorer/testnet/contract/CBJ6MTCKKZG73PMDZCJMSFRD7DQEMI4FKDH7CGDSV4W6FHCRBCQAVVJY) |
 
 Source: Circle's [Stellar CCTP contract addresses](https://developers.circle.com/stablecoins/docs/stellar-cctp-contract-addresses) page (testnet section). Both addresses are named `pub const` in `toss/src/cctp.rs`; only `CCTP_TOKEN_MESSENGER_MINTER` is called by the contract. `CCTP_MESSAGE_TRANSMITTER` is kept as a named constant for tooling and reporting.
 
@@ -37,13 +43,13 @@ Two live CCTP V2 releases on Stellar testnet → EVM testnets. Both fully comple
 
 Stellar transaction hashes:
 
-| Step | Hash |
-| --- | --- |
-| `initialize_escrow` (repo_id 23) | `48577992ee8c1bd87ea6a3ade5aa9c100b22a884081d2860859292b5ffd1a814` |
-| `deposit_funds` | `4e18a6e9d4c70600cf14489e51f88e7ce947c8ad3af25c1b0eb0b0ef9ca6e2a4` |
-| `create_milestone` (issue 23, reward `10000003`) | `715c23f8e6e7c371a6d967d00800389ba9177828f443b40d8753e05f3f08b81c` |
-| `assign_contributor(23, Cctp(6, padded))` | `e89eae42128435549d0cb4add0a79c12768288764a4610927d5be9616fc19004` |
-| `release_funds(23, 10000003)` — burn tx | `93c932edb6ade2d33a481102cd265737b0e1366b5ce81a460ab7c012ba17d61c` (ledger 4220641, 2026-08-19T07:42:44Z, source `toss-platform` `GDDK56...`) |
+| Step | Hash | Explorer link |
+| --- | --- | --- |
+| `initialize_escrow` (repo_id 23) | `48577992ee8c1bd87ea6a3ade5aa9c100b22a884081d2860859292b5ffd1a814` | [view tx](https://stellar.expert/explorer/testnet/tx/48577992ee8c1bd87ea6a3ade5aa9c100b22a884081d2860859292b5ffd1a814) |
+| `deposit_funds` | `4e18a6e9d4c70600cf14489e51f88e7ce947c8ad3af25c1b0eb0b0ef9ca6e2a4` | [view tx](https://stellar.expert/explorer/testnet/tx/4e18a6e9d4c70600cf14489e51f88e7ce947c8ad3af25c1b0eb0b0ef9ca6e2a4) |
+| `create_milestone` (issue 23, reward `10000003`) | `715c23f8e6e7c371a6d967d00800389ba9177828f443b40d8753e05f3f08b81c` | [view tx](https://stellar.expert/explorer/testnet/tx/715c23f8e6e7c371a6d967d00800389ba9177828f443b40d8753e05f3f08b81c) |
+| `assign_contributor(23, Cctp(6, padded))` | `e89eae42128435549d0cb4add0a79c12768288764a4610927d5be9616fc19004` | [view tx](https://stellar.expert/explorer/testnet/tx/e89eae42128435549d0cb4add0a79c12768288764a4610927d5be9616fc19004) |
+| `release_funds(23, 10000003)` — burn tx | `93c932edb6ade2d33a481102cd265737b0e1366b5ce81a460ab7c012ba17d61c` (ledger 4220641, 2026-08-19T07:42:44Z, source `toss-platform` `GDDK56...`) | [view tx](https://stellar.expert/explorer/testnet/tx/93c932edb6ade2d33a481102cd265737b0e1366b5ce81a460ab7c012ba17d61c) |
 
 CCTP message + attestation:
 
@@ -59,10 +65,10 @@ CCTP message + attestation:
 
 Base Sepolia mint / receive tx: **Blocked on testnet — see §6.** The Circle Iris attestation returned `status: complete` with a 130-byte (2×65) attestation, but the recovered signers do not match the configured attesters on Base Sepolia's `MessageTransmitterV2 (0xE737e5c...)`. Revert reason: `"Invalid signature: not attester"`. The same attester mismatch exists on Ethereum Sepolia.
 
-| Field | Value |
-| --- | --- |
-| Recipient USDC balance before | `0` (Base Sepolia USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`) |
-| Recipient USDC balance after | `0` (receiveMessage reverted; contract code unchanged) |
+| Field | Value | Explorer link |
+| --- | --- | --- |
+| Recipient USDC balance before | `0` (Base Sepolia USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`) | [BaseScan token](https://sepolia.basescan.org/token/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
+| Recipient USDC balance after | `0` (receiveMessage reverted; contract code unchanged) | [BaseScan wallet](https://sepolia.basescan.org/address/0xa3126f46ff73b4de67299cb5b1551087862b3b38) |
 
 ### Flow B — Stellar → Ethereum Sepolia (domain 0)
 
@@ -76,11 +82,11 @@ Base Sepolia mint / receive tx: **Blocked on testnet — see §6.** The Circle I
 
 Stellar transaction hashes:
 
-| Step | Hash |
-| --- | --- |
-| `create_milestone` (issue 24, reward `10000003`) | `b3d8ec1212b4a40e39ddc5284de1fd0d244d1cd548e4d0648347eb9717718fa3` |
-| `assign_contributor(24, Cctp(0, padded))` | `9cd836bd4a2251d327b9e666ea80deafdf177db4f2bac835a9fcf30d0ee017c7` |
-| `release_funds(24, 10000003)` — burn tx | `4c3d4bd19fc8a418552f4d602da68d00cd399e053a3e2727cb723966e88df7a3` (created 2026-08-19T15:10:26Z, source `toss-platform` `GDDK56...`) |
+| Step | Hash | Explorer link |
+| --- | --- | --- |
+| `create_milestone` (issue 24, reward `10000003`) | `b3d8ec1212b4a40e39ddc5284de1fd0d244d1cd548e4d0648347eb9717718fa3` | [view tx](https://stellar.expert/explorer/testnet/tx/b3d8ec1212b4a40e39ddc5284de1fd0d244d1cd548e4d0648347eb9717718fa3) |
+| `assign_contributor(24, Cctp(0, padded))` | `9cd836bd4a2251d327b9e666ea80deafdf177db4f2bac835a9fcf30d0ee017c7` | [view tx](https://stellar.expert/explorer/testnet/tx/9cd836bd4a2251d327b9e666ea80deafdf177db4f2bac835a9fcf30d0ee017c7) |
+| `release_funds(24, 10000003)` — burn tx | `4c3d4bd19fc8a418552f4d602da68d00cd399e053a3e2727cb723966e88df7a3` (created 2026-08-19T15:10:26Z, source `toss-platform` `GDDK56...`) | [view tx](https://stellar.expert/explorer/testnet/tx/4c3d4bd19fc8a418552f4d602da68d00cd399e053a3e2727cb723966e88df7a3) |
 
 CCTP message + attestation:
 
@@ -94,10 +100,10 @@ CCTP message + attestation:
 
 Ethereum Sepolia mint / receive tx: **Blocked on testnet — see §6.** Same Circle testnet attester mismatch as Flow A.
 
-| Field | Value |
-| --- | --- |
-| Recipient USDC balance before | `0` (Sepolia USDC `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`) |
-| Recipient USDC balance after | `0` (receiveMessage reverted; contract code unchanged) |
+| Field | Value | Explorer link |
+| --- | --- | --- |
+| Recipient USDC balance before | `0` (Sepolia USDC `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`) | [Etherscan token](https://sepolia.etherscan.io/token/0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238) |
+| Recipient USDC balance after | `0` (receiveMessage reverted; contract code unchanged) | [Etherscan wallet](https://sepolia.etherscan.io/address/0xa3126f46ff73b4de67299cb5b1551087862b3b38) |
 
 ### Live `release_funds` events (Flow A and Flow B)
 
@@ -118,16 +124,16 @@ returned_to_pool: "3"                // 3 stroops = 7th-decimal remainder
 
 A full release cycle using `PayoutTarget::Stellar(contributor)` (not Cctp) — the existing SAC-transfer path.
 
-| Step | Hash / Value |
-| --- | --- |
-| ChangeTrust (`toss-contributor` → USDC SAC) | `9132969bab7d1f92ca00dab2b91e9f044fcc9397a0f59957cf061497003b0bba` |
-| `create_milestone` (issue 25, reward `1000000` stroops = 0.1 USDC) | `6ef578c2eadc50fb1d78765140a9793b8fe19812d4680407e303ccc2aaa904b5` |
-| `assign_contributor(25, Stellar(GAXLOYY...))` | `728a4f6d342671263768e98f2a619167c9dd32138c3b5d6ddfdd926b2bebe1d9` |
-| `release_funds(25, 1000000)` — SAC transfer tx | `9c1fdb63e07fbe7722f4e54d03babe9272987747e6c7216eee6b5fa1640dfce7` |
-| SAC transfer event | `transfer` from `CDDBKY...` (Toss) → `GAXLOYY4MFRHGSZXG2JDTSJSNU7TFYSZSHSYQFP3PFZEPSJDWYVVAQO5` (toss-contributor), amount `1000000` |
-| `FundsReleased` event | `contributor: {"Stellar":"GAXLOYY..."}`, `actual_released: "1000000"`, `returned_to_pool: "0"` (exact amount, no remainder) |
-| `toss-contributor` USDC balance before | `0` |
-| `toss-contributor` USDC balance after | `0.1000000` (= 1,000,000 stroops = 0.1 USDC) — confirmed via Horizon `/accounts/GAXLOYY...` |
+| Step | Hash / Value | Explorer link |
+| --- | --- | --- |
+| ChangeTrust (`toss-contributor` → USDC SAC) | `9132969bab7d1f92ca00dab2b91e9f044fcc9397a0f59957cf061497003b0bba` | [view tx](https://stellar.expert/explorer/testnet/tx/9132969bab7d1f92ca00dab2b91e9f044fcc9397a0f59957cf061497003b0bba) |
+| `create_milestone` (issue 25, reward `1000000` stroops = 0.1 USDC) | `6ef578c2eadc50fb1d78765140a9793b8fe19812d4680407e303ccc2aaa904b5` | [view tx](https://stellar.expert/explorer/testnet/tx/6ef578c2eadc50fb1d78765140a9793b8fe19812d4680407e303ccc2aaa904b5) |
+| `assign_contributor(25, Stellar(GAXLOYY...))` | `728a4f6d342671263768e98f2a619167c9dd32138c3b5d6ddfdd926b2bebe1d9` | [view tx](https://stellar.expert/explorer/testnet/tx/728a4f6d342671263768e98f2a619167c9dd32138c3b5d6ddfdd926b2bebe1d9) |
+| `release_funds(25, 1000000)` — SAC transfer tx | `9c1fdb63e07fbe7722f4e54d03babe9272987747e6c7216eee6b5fa1640dfce7` | [view tx](https://stellar.expert/explorer/testnet/tx/9c1fdb63e07fbe7722f4e54d03babe9272987747e6c7216eee6b5fa1640dfce7) |
+| SAC transfer event | `transfer` from `CDDBKY...` (Toss) → `GAXLOYY4MFRHGSZXG2JDTSJSNU7TFYSZSHSYQFP3PFZEPSJDWYVVAQO5` (toss-contributor), amount `1000000` | [contributor account](https://stellar.expert/explorer/testnet/account/GAXLOYY4MFRHGSZXG2JDTSJSNU7TFYSZSHSYQFP3PFZEPSJDWYVVAQO5) |
+| `FundsReleased` event | `contributor: {"Stellar":"GAXLOYY..."}`, `actual_released: "1000000"`, `returned_to_pool: "0"` (exact amount, no remainder) | — |
+| `toss-contributor` USDC balance before | `0` | [contributor account](https://stellar.expert/explorer/testnet/account/GAXLOYY4MFRHGSZXG2JDTSJSNU7TFYSZSHSYQFP3PFZEPSJDWYVVAQO5) |
+| `toss-contributor` USDC balance after | `0.1000000` (= 1,000,000 stroops = 0.1 USDC) — confirmed via Horizon `/accounts/GAXLOYY...` | [contributor account](https://stellar.expert/explorer/testnet/account/GAXLOYY4MFRHGSZXG2JDTSJSNU7TFYSZSHSYQFP3PFZEPSJDWYVVAQO5) |
 
 Path unchanged from prior releases: `cc_release_fund` calls `token::Client::transfer(contract → contributor, amount)`.
 
@@ -166,12 +172,12 @@ The `6` stroops is **not** in `reserved` — both milestones 23 and 24 had their
 
 ### `withdraw_funds` — extracting the dust to the maintainer
 
-| Step | Hash / Value |
-| --- | --- |
-| `withdraw_funds(amount: 8000006)` tx | `5ea3f8925f030789e51e83b63c030638010d65da735da04009d918f19a0b4266` |
-| SAC transfer event | `transfer` from `CDDBKY...` → `GCS5LW2B3CSTB3FGL5MDYTBOZUR6OVQIS7OEKDLOZXFIMBAHFJ2NLKOG` (toss-maintainer), amount `8000006` |
-| `FundsWithdrawn` event | `amount: "8000006"`, `new_available: "0"` |
-| `get_balance` after | `{"available":"0","reserved":"1000000",...}` |
+| Step | Hash / Value | Explorer link |
+| --- | --- | --- |
+| `withdraw_funds(amount: 8000006)` tx | `5ea3f8925f030789e51e83b63c030638010d65da735da04009d918f19a0b4266` | [view tx](https://stellar.expert/explorer/testnet/tx/5ea3f8925f030789e51e83b63c030638010d65da735da04009d918f19a0b4266) |
+| SAC transfer event | `transfer` from `CDDBKY...` → `GCS5LW2B3CSTB3FGL5MDYTBOZUR6OVQIS7OEKDLOZXFIMBAHFJ2NLKOG` (toss-maintainer), amount `8000006` | [maintainer account](https://stellar.expert/explorer/testnet/account/GCS5LW2B3CSTB3FGL5MDYTBOZUR6OVQIS7OEKDLOZXFIMBAHFJ2NLKOG) |
+| `FundsWithdrawn` event | `amount: "8000006"`, `new_available: "0"` | — |
+| `get_balance` after | `{"available":"0","reserved":"1000000",...}` | — |
 
 The maintainer successfully withdrew **the entire `available` pool including the 6-stroop dust** in a single call. This proves:
 1. The 7th-decimal remainder was indeed in `available`, not reserved.
@@ -265,6 +271,19 @@ gasUsed: 44382
 revert reason: Invalid signature: not attester
 ```
 
+[view tx on Sepolia Etherscan](https://sepolia.etherscan.io/tx/0xfc47ae94f99a3fb7f85a8f16e502abd3fe788fce435daaf566a744f6c87746d9)
+
+### Destination contract and token references
+
+| Network | Contract / address | Explorer link |
+| --- | --- | --- |
+| Ethereum Sepolia | MessageTransmitter V2 `0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275` | [Etherscan](https://sepolia.etherscan.io/address/0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275) |
+| Ethereum Sepolia | TokenMessenger V2 `0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA` | [Etherscan](https://sepolia.etherscan.io/address/0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA) |
+| Ethereum Sepolia | USDC `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | [Etherscan token](https://sepolia.etherscan.io/token/0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238) |
+| Base Sepolia | MessageTransmitter V2 `0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275` | [BaseScan](https://sepolia.basescan.org/address/0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275) |
+| Base Sepolia | TokenMessenger V2 `0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA` | [BaseScan](https://sepolia.basescan.org/address/0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA) |
+| Base Sepolia | USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | [BaseScan token](https://sepolia.basescan.org/token/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
+
 ### Why this is not a Toss contract bug
 
 - The Stellar burn succeeded (`amount=10000000`, `actual_released=10000000`, `returned_to_pool=3`).
@@ -309,3 +328,6 @@ Build: `cargo build --workspace` ✅, `cargo fmt --all -- --check` ✅, `cargo t
 - Circle evm-cctp-contracts issue #110 (Arc testnet attestation gap, same class of testnet-only limitation): <https://github.com/circlefin/evm-cctp-contracts/issues/110>
 - Stellar Horizon (used for tx queries, account balances): <https://horizon-testnet.stellar.org>
 - Soroban RPC (used for getEvents): <https://soroban-testnet.stellar.org>
+- Stellar testnet explorer: <https://stellar.expert/explorer/testnet>
+- Ethereum Sepolia explorer: <https://sepolia.etherscan.io>
+- Base Sepolia explorer: <https://sepolia.basescan.org>
