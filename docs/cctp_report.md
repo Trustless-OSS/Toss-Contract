@@ -200,7 +200,7 @@ Both errors are also covered by `cargo test` unit tests (`test_assign_contributo
 
 ## 6. Unit tests — `cargo test --workspace`
 
-Full run: `cargo test --workspace` (run from `C:\Users\sayan\Toss-Contract`). 104 tests, 0 failures.
+Full run: `cargo test --workspace` (run from the repo root). 104 tests, 0 failures.
 
 ```
      Running unittests src\lib.rs (target\debug\deps\toss-4c70d0e0437a9c9e.exe)
