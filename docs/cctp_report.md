@@ -295,14 +295,14 @@ This is consistent with the GitHub issue [circlefin/evm-cctp-contracts #110](htt
 
 ### What still proves the issue is satisfied
 
-- ✅ CCTP V2 8-arg `deposit_for_burn` signature live on Stellar (the V2 fix this issue requires)
-- ✅ `cctp::cctp_remainder` actually used on the release path (`toss/src/lib.rs:315`)
-- ✅ `FundsReleased` event reports `actual_released` (truncated, not pre-truncation reward) + `returned_to_pool`
-- ✅ 7th-decimal remainder live-tracked to `available` and withdrawable (`withdraw_funds` proof)
-- ✅ Validation errors `InvalidDomain` (#50) and `EmptyRecipient` (#51) returned by named `ContractError`
-- ✅ Stellar `PayoutTarget::Stellar` regression — SAC transfer to toss-contributor confirmed
-- ✅ Supported domains aligned with Circle's published list (`0|1|2|3|5|6|7|25`); domain 4 (Noble, V1-only) dropped
-- ✅ `CCTP_TOKEN_MESSENGER_MINTER` and `CCTP_MESSAGE_TRANSMITTER` named constants sourced from Circle docs
+- [x] CCTP V2 8-arg `deposit_for_burn` signature live on Stellar (the V2 fix this issue requires)
+- [x] `cctp::cctp_remainder` actually used on the release path (`toss/src/lib.rs:315`)
+- [x] `FundsReleased` event reports `actual_released` (truncated, not pre-truncation reward) + `returned_to_pool`
+- [x] 7th-decimal remainder live-tracked to `available` and withdrawable (`withdraw_funds` proof)
+- [x] Validation errors `InvalidDomain` (#50) and `EmptyRecipient` (#51) returned by named `ContractError`
+- [x] Stellar `PayoutTarget::Stellar` regression — SAC transfer to toss-contributor confirmed
+- [x] Supported domains aligned with Circle's published list (`0|1|2|3|5|6|7|25`); domain 4 (Noble, V1-only) dropped
+- [x] `CCTP_TOKEN_MESSENGER_MINTER` and `CCTP_MESSAGE_TRANSMITTER` named constants sourced from Circle docs
 
 ---
 
@@ -316,7 +316,7 @@ This is consistent with the GitHub issue [circlefin/evm-cctp-contracts #110](htt
 | `docs/cctp_report.md` | This file. |
 | `README.md` | Link to this report added (see §9). |
 
-Build: `cargo build --workspace` ✅, `cargo fmt --all -- --check` ✅, `cargo test --workspace` ✅ (104 passed).
+Build: `cargo build --workspace` [x], `cargo fmt --all -- --check` [x], `cargo test --workspace` [x] (104 passed).
 
 ---
 
