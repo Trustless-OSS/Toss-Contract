@@ -726,6 +726,57 @@ fn setup_funding_env(initial_mint: i128) -> FundingSetup {
     }
 }
 
+fn assert_accounting_invariants(setup: &FundingSetup) {
+    let balance = setup.client.get_balance();
+    let escrow = setup.client.get_escrow();
+    assert_eq!(balance.total_deposited, escrow.total_deposited);
+    assert_eq!(balance.reserved, escrow.reserved);
+    assert_eq!(balance.total_released, escrow.total_released);
+
+    let mut expected_reserved = 0;
+    let mut expected_released = 0;
+    let milestones = setup.client.list_milestones(&0, &50);
+    for milestone in milestones.iter() {
+        match milestone.status {
+            MilestoneStatus::Pending | MilestoneStatus::Active => {
+                expected_reserved += milestone.reward;
+                assert_eq!(milestone.actual_released, 0);
+            }
+            MilestoneStatus::Released => {
+                expected_released += milestone.actual_released;
+            }
+            MilestoneStatus::Cancelled => {
+                assert_eq!(milestone.actual_released, 0);
+            }
+        }
+    }
+
+    let expected_available = balance
+        .total_deposited
+        .checked_sub(expected_reserved)
+        .unwrap()
+        .checked_sub(expected_released)
+        .unwrap();
+
+    assert_eq!(balance.reserved, expected_reserved);
+    assert_eq!(balance.total_released, expected_released);
+    assert_eq!(balance.available, expected_available);
+    assert!(balance.available >= 0);
+}
+
+fn assert_same_balance(before: &BalanceInfo, after: &BalanceInfo) {
+    assert_eq!(before.total_deposited, after.total_deposited);
+    assert_eq!(before.reserved, after.reserved);
+    assert_eq!(before.available, after.available);
+    assert_eq!(before.total_released, after.total_released);
+}
+
+fn valid_evm_recipient(env: &Env) -> soroban_sdk::BytesN<32> {
+    let mut recipient = [0u8; 32];
+    recipient[31] = 1;
+    soroban_sdk::BytesN::from_array(env, &recipient)
+}
+
 // ---------------------------------------------------------------------------
 // deposit_funds
 // ---------------------------------------------------------------------------
@@ -1237,6 +1288,342 @@ fn test_cctp_release_non_multiple() {
     // Remaining 7 stroops stays in the available balance.
     let balance = setup.client.get_balance();
     assert_eq!(balance.available, 500); // 1000 total deposited - 0 reserved - 500 total_released = 500
+}
+
+// ---------------------------------------------------------------------------
+// Accounting invariants
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_accounting_invariants_after_realistic_mixed_sequence() {
+    let setup = setup_funding_env(10_000);
+    setup.client.try_deposit_funds(&10_000).unwrap().unwrap();
+    assert_accounting_invariants(&setup);
+
+    setup
+        .client
+        .try_create_milestone(&1, &1_000)
+        .unwrap()
+        .unwrap();
+    assert_accounting_invariants(&setup);
+
+    setup
+        .client
+        .try_update_milestone(&1, &1_300)
+        .unwrap()
+        .unwrap();
+    assert_accounting_invariants(&setup);
+
+    setup
+        .client
+        .try_update_milestone(&1, &900)
+        .unwrap()
+        .unwrap();
+    assert_accounting_invariants(&setup);
+
+    let active_contributor = Address::generate(&setup.env);
+    setup
+        .client
+        .try_create_milestone(&2, &1_000)
+        .unwrap()
+        .unwrap();
+    setup
+        .client
+        .try_assign_contributor(&2, &PayoutTarget::Stellar(active_contributor))
+        .unwrap()
+        .unwrap();
+    setup.client.try_cancel_milestone(&2).unwrap().unwrap();
+    assert_eq!(
+        setup.client.get_milestone(&2).status,
+        MilestoneStatus::Cancelled
+    );
+    assert_accounting_invariants(&setup);
+
+    let full_release_contributor = Address::generate(&setup.env);
+    setup
+        .client
+        .try_create_milestone(&3, &700)
+        .unwrap()
+        .unwrap();
+    setup
+        .client
+        .try_assign_contributor(&3, &PayoutTarget::Stellar(full_release_contributor))
+        .unwrap()
+        .unwrap();
+    setup.client.try_release_funds(&3, &700).unwrap().unwrap();
+    assert_accounting_invariants(&setup);
+
+    let partial_release_contributor = Address::generate(&setup.env);
+    setup
+        .client
+        .try_create_milestone(&4, &800)
+        .unwrap()
+        .unwrap();
+    setup
+        .client
+        .try_assign_contributor(&4, &PayoutTarget::Stellar(partial_release_contributor))
+        .unwrap()
+        .unwrap();
+    setup.client.try_release_funds(&4, &500).unwrap().unwrap();
+    assert_accounting_invariants(&setup);
+
+    setup
+        .client
+        .try_create_milestone(&5, &507)
+        .unwrap()
+        .unwrap();
+    setup
+        .client
+        .try_assign_contributor(&5, &PayoutTarget::Cctp(0, valid_evm_recipient(&setup.env)))
+        .unwrap()
+        .unwrap();
+    setup.client.try_release_funds(&5, &507).unwrap().unwrap();
+
+    let cctp_milestone = setup.client.get_milestone(&5);
+    assert_eq!(cctp_milestone.status, MilestoneStatus::Released);
+    assert_eq!(cctp_milestone.actual_released, 500);
+
+    let balance_before_withdraw = setup.client.get_balance();
+    assert_eq!(balance_before_withdraw.reserved, 900);
+    assert_eq!(balance_before_withdraw.total_released, 1_700);
+    assert_eq!(balance_before_withdraw.available, 7_400);
+    assert_accounting_invariants(&setup);
+
+    setup
+        .client
+        .try_withdraw_funds(&balance_before_withdraw.available)
+        .unwrap()
+        .unwrap();
+
+    let balance_after_withdraw = setup.client.get_balance();
+    assert_eq!(balance_after_withdraw.total_deposited, 2_600);
+    assert_eq!(balance_after_withdraw.available, 0);
+    assert_accounting_invariants(&setup);
+}
+
+#[derive(Clone, Copy)]
+enum AccountingOp {
+    Create(u64, i128),
+    Update(u64, i128),
+    Assign(u64),
+    Cancel(u64),
+    Release(u64, i128),
+    Withdraw(i128),
+}
+
+fn run_accounting_sequence(ops: &[AccountingOp]) {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+    assert_accounting_invariants(&setup);
+
+    for op in ops {
+        match *op {
+            AccountingOp::Create(issue_id, reward) => {
+                setup
+                    .client
+                    .try_create_milestone(&issue_id, &reward)
+                    .unwrap()
+                    .unwrap();
+            }
+            AccountingOp::Update(issue_id, reward) => {
+                setup
+                    .client
+                    .try_update_milestone(&issue_id, &reward)
+                    .unwrap()
+                    .unwrap();
+            }
+            AccountingOp::Assign(issue_id) => {
+                let contributor = Address::generate(&setup.env);
+                setup
+                    .client
+                    .try_assign_contributor(&issue_id, &PayoutTarget::Stellar(contributor))
+                    .unwrap()
+                    .unwrap();
+            }
+            AccountingOp::Cancel(issue_id) => {
+                setup
+                    .client
+                    .try_cancel_milestone(&issue_id)
+                    .unwrap()
+                    .unwrap();
+            }
+            AccountingOp::Release(issue_id, amount) => {
+                setup
+                    .client
+                    .try_release_funds(&issue_id, &amount)
+                    .unwrap()
+                    .unwrap();
+            }
+            AccountingOp::Withdraw(amount) => {
+                setup.client.try_withdraw_funds(&amount).unwrap().unwrap();
+            }
+        }
+
+        assert_accounting_invariants(&setup);
+    }
+}
+
+#[test]
+fn test_accounting_invariants_after_looped_operation_sequences() {
+    let sequences: [&[AccountingOp]; 2] = [
+        &[
+            AccountingOp::Create(1, 200),
+            AccountingOp::Create(2, 150),
+            AccountingOp::Update(1, 250),
+            AccountingOp::Assign(1),
+            AccountingOp::Release(1, 200),
+            AccountingOp::Cancel(2),
+            AccountingOp::Withdraw(800),
+        ],
+        &[
+            AccountingOp::Create(1, 400),
+            AccountingOp::Update(1, 300),
+            AccountingOp::Assign(1),
+            AccountingOp::Cancel(1),
+            AccountingOp::Create(2, 250),
+            AccountingOp::Assign(2),
+            AccountingOp::Release(2, 250),
+            AccountingOp::Withdraw(750),
+        ],
+    ];
+
+    for sequence in sequences {
+        run_accounting_sequence(sequence);
+    }
+}
+
+#[test]
+fn test_cctp_truncation_remainder_stays_available_not_reserved() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+    setup
+        .client
+        .try_create_milestone(&1, &507)
+        .unwrap()
+        .unwrap();
+    setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Cctp(0, valid_evm_recipient(&setup.env)))
+        .unwrap()
+        .unwrap();
+
+    setup.client.try_release_funds(&1, &507).unwrap().unwrap();
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 0);
+    assert_eq!(balance.total_released, 500);
+    assert_eq!(balance.available, 500);
+    assert_accounting_invariants(&setup);
+}
+
+#[test]
+fn test_paused_escrow_rejections_do_not_mutate_balances() {
+    let setup = setup_pending_milestone(1_000, 300);
+    let before = setup.client.get_balance();
+
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    assert_eq!(
+        setup.client.try_deposit_funds(&100).unwrap_err().unwrap(),
+        ContractError::EscrowInactive
+    );
+    assert_eq!(
+        setup.client.try_withdraw_funds(&100).unwrap_err().unwrap(),
+        ContractError::EscrowInactive
+    );
+    assert_eq!(
+        setup
+            .client
+            .try_create_milestone(&2, &100)
+            .unwrap_err()
+            .unwrap(),
+        ContractError::EscrowInactive
+    );
+    assert_eq!(
+        setup
+            .client
+            .try_update_milestone(&1, &400)
+            .unwrap_err()
+            .unwrap(),
+        ContractError::EscrowInactive
+    );
+    assert_eq!(
+        setup.client.try_cancel_milestone(&1).unwrap_err().unwrap(),
+        ContractError::EscrowInactive
+    );
+
+    let after = setup.client.get_balance();
+    assert_same_balance(&before, &after);
+    assert_accounting_invariants(&setup);
+}
+
+#[test]
+fn test_get_balance_rejects_negative_available_invariant() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&100).unwrap().unwrap();
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.reserved = 101;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    let result = setup.client.try_get_balance();
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::BalanceInvariantBroken
+    );
+}
+
+#[test]
+fn test_deposit_rejects_total_deposited_overflow() {
+    let setup = setup_funding_env(1);
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.total_deposited = i128::MAX;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    let result = setup.client.try_deposit_funds(&1);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::BalanceInvariantBroken
+    );
+}
+
+#[test]
+fn test_release_rejects_reserved_underflow_without_mutating_milestone() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+    setup
+        .client
+        .try_create_milestone(&1, &300)
+        .unwrap()
+        .unwrap();
+
+    let contributor = Address::generate(&setup.env);
+    setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor))
+        .unwrap()
+        .unwrap();
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.reserved = 100;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    let result = setup.client.try_release_funds(&1, &300);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::BalanceInvariantBroken
+    );
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.status, MilestoneStatus::Active);
+    assert_eq!(milestone.actual_released, 0);
 }
 
 #[test]
