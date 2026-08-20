@@ -2,15 +2,15 @@ use crate::accounting::{checked_add_balance, checked_sub_balance, compute_availa
 use crate::error::ContractError;
 use crate::types::{Milestone, MilestoneStatus, PayoutTarget};
 use crate::{auth, cctp, events, storage, MAX_PAGE_SIZE};
-use soroban_sdk::{panic_with_error, Env, Vec};
+use soroban_sdk::{Env, Vec};
 
 pub(crate) fn create_milestone(env: Env, issue_id: u64, reward: i128) -> Result<(), ContractError> {
     let mut escrow = storage::get_escrow(&env)?;
     auth::require_maintainer(&escrow);
-    auth::require_active(&env, &escrow);
+    auth::require_active(&escrow)?;
 
     if reward <= 0 {
-        panic_with_error!(&env, ContractError::ZeroAmount);
+        return Err(ContractError::ZeroAmount);
     }
     if storage::get_milestone(&env, issue_id).is_ok() {
         return Err(ContractError::DuplicateIssueId);
@@ -43,10 +43,10 @@ pub(crate) fn create_milestone(env: Env, issue_id: u64, reward: i128) -> Result<
 pub(crate) fn update_milestone(env: Env, issue_id: u64, reward: i128) -> Result<(), ContractError> {
     let mut escrow = storage::get_escrow(&env)?;
     auth::require_maintainer(&escrow);
-    auth::require_active(&env, &escrow);
+    auth::require_active(&escrow)?;
 
     if reward <= 0 {
-        panic_with_error!(&env, ContractError::ZeroAmount);
+        return Err(ContractError::ZeroAmount);
     }
 
     let mut milestone = storage::get_milestone(&env, issue_id)?;
@@ -84,7 +84,7 @@ pub(crate) fn assign_contributor(
 
     let escrow = storage::get_escrow(&env)?;
     auth::require_maintainer(&escrow);
-    auth::require_active(&env, &escrow);
+    auth::require_active(&escrow)?;
 
     let mut milestone = storage::get_milestone(&env, issue_id)?;
     if milestone.status != MilestoneStatus::Pending {
@@ -108,7 +108,7 @@ pub(crate) fn reassign_contributor(
 
     let escrow = storage::get_escrow(&env)?;
     auth::require_maintainer(&escrow);
-    auth::require_active(&env, &escrow);
+    auth::require_active(&escrow)?;
 
     let mut milestone = storage::get_milestone(&env, issue_id)?;
     if milestone.status != MilestoneStatus::Active {
@@ -125,11 +125,11 @@ pub(crate) fn reassign_contributor(
 pub(crate) fn cancel_milestone(env: Env, issue_id: u64) -> Result<(), ContractError> {
     let mut escrow = storage::get_escrow(&env)?;
     auth::require_maintainer(&escrow);
-    auth::require_active(&env, &escrow);
+    auth::require_active(&escrow)?;
 
     let mut milestone = storage::get_milestone(&env, issue_id)?;
     if milestone.status != MilestoneStatus::Pending && milestone.status != MilestoneStatus::Active {
-        return Err(ContractError::MilestoneNotActive);
+        return Err(ContractError::MilestoneNotCancellable);
     }
 
     escrow.reserved = checked_sub_balance(escrow.reserved, milestone.reward)?;

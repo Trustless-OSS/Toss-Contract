@@ -25,6 +25,37 @@ The contract exposes the following public methods:
 
 Every state-changing method requires an active escrow. Amounts are integer token base units; for a 7-decimal USDC token, `10_000_000` base units equals 1 USDC.
 
+## Failure policy
+
+The contract uses two distinct failure channels:
+
+- A missing or wrong signature fails through Soroban `require_auth()` and is an authorization panic. Signature failures are never translated into `NotPlatform` or `NotMaintainer` contract errors.
+- Missing state and business-rule failures return `Err(ContractError::...)`. After initialization, an inactive escrow consistently returns `EscrowInactive` from every state-changing method except `resume_escrow`, which is the operation that restores activity. A repeat `initialize` call stops at its existence guard and returns `EscrowAlreadyExists` before authentication or activity checks.
+
+`NotAdmin` is reserved for a missing admin storage key. If the key exists but its address did not authorize the call, `require_auth()` panics instead.
+
+| Method | Authorization panic | Returned `ContractError` values |
+| --- | --- | --- |
+| `initialize` | First call: maintainer; repeat calls stop at the existence guard before authentication | `EscrowAlreadyExists` |
+| `deposit_funds` | Maintainer | `EscrowNotFound`, `EscrowInactive`, `ZeroAmount`, `BalanceInvariantBroken` |
+| `withdraw_funds` | Maintainer | `EscrowNotFound`, `EscrowInactive`, `ZeroAmount`, `WithdrawExceedsAvailable`, `BalanceInvariantBroken` |
+| `create_milestone` | Maintainer | `EscrowNotFound`, `EscrowInactive`, `ZeroAmount`, `DuplicateIssueId`, `InsufficientBalance`, `BalanceInvariantBroken` |
+| `update_milestone` | Maintainer | `EscrowNotFound`, `EscrowInactive`, `ZeroAmount`, `MilestoneNotFound`, `MilestoneNotPending`, `InsufficientBalance`, `BalanceInvariantBroken` |
+| `assign_contributor` | Maintainer | `InvalidDomain`, `EmptyRecipient`, `InvalidCctpRecipientPadding`, `EscrowNotFound`, `EscrowInactive`, `MilestoneNotFound`, `MilestoneNotPending` |
+| `reassign_contributor` | Maintainer | `InvalidDomain`, `EmptyRecipient`, `InvalidCctpRecipientPadding`, `EscrowNotFound`, `EscrowInactive`, `MilestoneNotFound`, `MilestoneNotActive` |
+| `release_funds` | Platform | `EscrowNotFound`, `EscrowInactive`, `MilestoneNotFound`, `MilestoneNotActive`, `ZeroAmount`, `ReleaseTooLarge`, `ContributorNotSet`, `InvalidDomain`, `EmptyRecipient`, `ZeroBurnAmount`, `InvalidCctpRecipientPadding`, `BalanceInvariantBroken` |
+| `cancel_milestone` | Maintainer | `EscrowNotFound`, `EscrowInactive`, `MilestoneNotFound`, `MilestoneNotCancellable`, `BalanceInvariantBroken` |
+| `transfer_admin` | Stored admin | `NotAdmin`, `EscrowNotFound`, `EscrowInactive` |
+| `update_platform` | Stored admin | `NotAdmin`, `EscrowNotFound`, `EscrowInactive` |
+| `update_maintainer` | Stored admin | `NotAdmin`, `EscrowNotFound`, `EscrowInactive` |
+| `pause_escrow` | Stored admin | `NotAdmin`, `EscrowNotFound`, `EscrowInactive` |
+| `resume_escrow` | Stored admin | `NotAdmin`, `EscrowNotFound`, `EscrowAlreadyActive` |
+| `get_escrow` | None | `EscrowNotFound` |
+| `get_milestone` | None | `MilestoneNotFound` |
+| `get_balance` | None | `EscrowNotFound`, `BalanceInvariantBroken` |
+| `list_milestones` | None | `ZeroPageLimit`, `MilestoneNotFound` if the stored issue index is inconsistent |
+| `get_milestone_count` | None | None |
+
 ## Data model
 
 ### `PayoutTarget`
@@ -73,10 +104,10 @@ State-changing methods emit typed events for initialization, deposits, withdrawa
 
 | Codes | Errors |
 | --- | --- |
-| 1–3 | `NotAdmin`, `NotPlatform`, `NotMaintainer` |
-| 10–12 | `EscrowNotFound`, `EscrowAlreadyExists`, `EscrowInactive` |
+| 1 | `NotAdmin` (missing admin storage key only) |
+| 10–13 | `EscrowNotFound`, `EscrowAlreadyExists`, `EscrowInactive`, `EscrowAlreadyActive` |
 | 20–23 | `InsufficientBalance`, `WithdrawExceedsAvailable`, `ZeroAmount`, `BalanceInvariantBroken` |
-| 30–34 | `MilestoneNotFound`, `MilestoneNotPending`, `MilestoneNotActive`, `DuplicateIssueId`, `ReleaseTooLarge` |
+| 30–35 | `MilestoneNotFound`, `MilestoneNotPending`, `MilestoneNotActive`, `DuplicateIssueId`, `ReleaseTooLarge`, `MilestoneNotCancellable` |
 | 40 | `ContributorNotSet` |
 | 50–53 | `InvalidDomain`, `EmptyRecipient`, `ZeroBurnAmount`, `InvalidCctpRecipientPadding` |
 | 60 | `ZeroPageLimit` |

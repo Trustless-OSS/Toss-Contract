@@ -2,15 +2,15 @@ use crate::accounting::{checked_add_balance, checked_sub_balance, compute_availa
 use crate::error::ContractError;
 use crate::types::{BalanceInfo, EscrowState};
 use crate::{auth, events, storage};
-use soroban_sdk::{panic_with_error, token, Env};
+use soroban_sdk::{token, Env};
 
 pub(crate) fn deposit_funds(env: Env, amount: i128) -> Result<(), ContractError> {
     let mut escrow = storage::get_escrow(&env)?;
     auth::require_maintainer(&escrow);
-    auth::require_active(&env, &escrow);
+    auth::require_active(&escrow)?;
 
     if amount <= 0 {
-        panic_with_error!(&env, ContractError::ZeroAmount);
+        return Err(ContractError::ZeroAmount);
     }
 
     let new_total_deposited = checked_add_balance(escrow.total_deposited, amount)?;
@@ -27,15 +27,15 @@ pub(crate) fn deposit_funds(env: Env, amount: i128) -> Result<(), ContractError>
 pub(crate) fn withdraw_funds(env: Env, amount: i128) -> Result<(), ContractError> {
     let mut escrow = storage::get_escrow(&env)?;
     auth::require_maintainer(&escrow);
-    auth::require_active(&env, &escrow);
+    auth::require_active(&escrow)?;
 
     if amount <= 0 {
-        panic_with_error!(&env, ContractError::ZeroAmount);
+        return Err(ContractError::ZeroAmount);
     }
 
     let available = compute_available(&escrow)?;
     if amount > available {
-        panic_with_error!(&env, ContractError::WithdrawExceedsAvailable);
+        return Err(ContractError::WithdrawExceedsAvailable);
     }
 
     let new_total_deposited = checked_sub_balance(escrow.total_deposited, amount)?;

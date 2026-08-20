@@ -194,7 +194,10 @@ fn test_initialize_rejects_double_init() {
     assert!(result.is_ok());
 
     let result = c.try_initialize(&2, &maintainer, &platform, &token);
-    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::EscrowAlreadyExists
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -218,12 +221,12 @@ fn test_storage_escrow_roundtrip() {
 }
 
 #[test]
-fn test_get_escrow_before_init_panics() {
+fn test_get_escrow_before_init_returns_error() {
     let (env, contract_id) = setup_env();
     let c = client(&env, &contract_id);
 
     let result = c.try_get_escrow();
-    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowNotFound);
 }
 
 // ---------------------------------------------------------------------------
@@ -596,7 +599,7 @@ fn test_has_escrow_before_and_after_init() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn test_release_funds_not_active_panics() {
+fn test_release_funds_not_active_returns_error() {
     let (env, contract_id) = setup_env();
     let c = client(&env, &contract_id);
     env.mock_all_auths();
@@ -620,7 +623,10 @@ fn test_release_funds_not_active_panics() {
     });
 
     let result = c.try_release_funds(&1, &100);
-    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::MilestoneNotActive
+    );
 }
 
 #[test]
@@ -648,7 +654,10 @@ fn test_release_funds_contributor_not_set() {
     });
 
     let result = c.try_release_funds(&2, &100);
-    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::ContributorNotSet
+    );
 }
 
 #[test]
@@ -680,7 +689,7 @@ fn test_release_funds_too_large() {
 }
 
 #[test]
-fn test_release_funds_zero_amount_panics() {
+fn test_release_funds_zero_amount_returns_error() {
     let (env, contract_id) = setup_env();
     let c = client(&env, &contract_id);
     env.mock_all_auths();
@@ -708,7 +717,7 @@ fn test_release_funds_zero_amount_panics() {
 }
 
 #[test]
-fn test_release_funds_negative_amount_panics() {
+fn test_release_funds_negative_amount_returns_error() {
     let (env, contract_id) = setup_env();
     let c = client(&env, &contract_id);
     env.mock_all_auths();
@@ -860,14 +869,14 @@ fn test_deposit_emits_event() {
 }
 
 #[test]
-fn test_deposit_zero_amount_panics() {
+fn test_deposit_zero_amount_returns_error() {
     let setup = setup_funding_env(100);
     let result = setup.client.try_deposit_funds(&0);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroAmount);
 }
 
 #[test]
-fn test_deposit_negative_amount_panics() {
+fn test_deposit_negative_amount_returns_error() {
     let setup = setup_funding_env(100);
     let result = setup.client.try_deposit_funds(&-1);
     assert_eq!(result.unwrap_err().unwrap(), ContractError::ZeroAmount);
@@ -917,7 +926,7 @@ fn test_withdraw_up_to_available() {
 }
 
 #[test]
-fn test_withdraw_exceeds_available_panics() {
+fn test_withdraw_exceeds_available_returns_error() {
     let setup = setup_funding_env(500);
     setup.client.try_deposit_funds(&500).unwrap().unwrap();
 
@@ -929,7 +938,7 @@ fn test_withdraw_exceeds_available_panics() {
 }
 
 #[test]
-fn test_withdraw_zero_amount_panics() {
+fn test_withdraw_zero_amount_returns_error() {
     let setup = setup_funding_env(500);
     setup.client.try_deposit_funds(&500).unwrap().unwrap();
 
@@ -1048,6 +1057,14 @@ fn test_release_funds_transfers_to_stellar_contributor() {
     let token_client = token::Client::new(&setup.env, &setup.token);
     assert_eq!(token_client.balance(&contributor), 500);
     assert_eq!(token_client.balance(&setup.contract_id), 500);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized function call for address")]
+fn test_release_funds_requires_platform() {
+    let setup = setup_funding_env(1_000);
+    setup.env.set_auths(&[]);
+    setup.client.release_funds(&999, &1);
 }
 
 #[test]
@@ -2031,6 +2048,99 @@ fn setup_pending_milestone(deposit: i128, reward: i128) -> FundingSetup {
         .unwrap()
         .unwrap();
     setup
+}
+
+#[test]
+fn test_business_rule_failures_are_returned_as_contract_errors() {
+    let setup = setup_pending_milestone(1_000, 300);
+
+    let zero_deposit = setup.env.as_contract(&setup.contract_id, || {
+        funding::deposit_funds(setup.env.clone(), 0)
+    });
+    assert_eq!(zero_deposit, Err(ContractError::ZeroAmount));
+
+    let zero_update = setup.env.as_contract(&setup.contract_id, || {
+        milestones::update_milestone(setup.env.clone(), 1, 0)
+    });
+    assert_eq!(zero_update, Err(ContractError::ZeroAmount));
+
+    let contributor = Address::generate(&setup.env);
+    setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor))
+        .unwrap()
+        .unwrap();
+
+    let oversized_release = setup.env.as_contract(&setup.contract_id, || {
+        payouts::release_funds(setup.env.clone(), 1, 301)
+    });
+    assert_eq!(oversized_release, Err(ContractError::ReleaseTooLarge));
+}
+
+#[test]
+fn test_paused_escrow_is_returned_as_contract_error() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let inactive = setup.env.as_contract(&setup.contract_id, || {
+        funding::deposit_funds(setup.env.clone(), 100)
+    });
+    assert_eq!(inactive, Err(ContractError::EscrowInactive));
+}
+
+#[test]
+fn test_cancel_released_or_cancelled_returns_not_cancellable() {
+    let released = setup_pending_milestone(1_000, 300);
+    let contributor = Address::generate(&released.env);
+    released
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor))
+        .unwrap()
+        .unwrap();
+    released
+        .client
+        .try_release_funds(&1, &300)
+        .unwrap()
+        .unwrap();
+
+    let released_error = released.env.as_contract(&released.contract_id, || {
+        milestones::cancel_milestone(released.env.clone(), 1)
+    });
+    assert_eq!(released_error, Err(ContractError::MilestoneNotCancellable));
+
+    let cancelled = setup_pending_milestone(1_000, 300);
+    cancelled.client.try_cancel_milestone(&1).unwrap().unwrap();
+
+    let cancelled_error = cancelled.env.as_contract(&cancelled.contract_id, || {
+        milestones::cancel_milestone(cancelled.env.clone(), 1)
+    });
+    assert_eq!(cancelled_error, Err(ContractError::MilestoneNotCancellable));
+}
+
+#[test]
+fn test_duplicate_issue_id_is_returned() {
+    let setup = setup_pending_milestone(1_000, 300);
+
+    let duplicate = setup.env.as_contract(&setup.contract_id, || {
+        milestones::create_milestone(setup.env.clone(), 1, 300)
+    });
+    assert_eq!(duplicate, Err(ContractError::DuplicateIssueId));
+}
+
+#[test]
+fn test_missing_admin_key_returns_not_admin() {
+    let setup = setup_funding_env(1_000);
+    let new_admin = Address::generate(&setup.env);
+
+    let missing_admin = setup.env.as_contract(&setup.contract_id, || {
+        setup
+            .env
+            .storage()
+            .persistent()
+            .remove(&storage::StorageKey::Admin);
+        admin::transfer_admin(setup.env.clone(), new_admin)
+    });
+    assert_eq!(missing_admin, Err(ContractError::NotAdmin));
 }
 
 #[test]

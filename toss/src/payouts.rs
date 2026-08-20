@@ -2,22 +2,22 @@ use crate::accounting::{checked_add_balance, checked_sub_balance};
 use crate::error::ContractError;
 use crate::types::{MilestoneStatus, PayoutTarget};
 use crate::{auth, cctp, events, storage};
-use soroban_sdk::{panic_with_error, Env};
+use soroban_sdk::Env;
 
 pub(crate) fn release_funds(env: Env, issue_id: u64, amount: i128) -> Result<(), ContractError> {
     let mut escrow = storage::get_escrow(&env)?;
     auth::require_platform(&escrow);
-    auth::require_active(&env, &escrow);
+    auth::require_active(&escrow)?;
 
     let mut milestone = storage::get_milestone(&env, issue_id)?;
     if milestone.status != MilestoneStatus::Active {
-        panic_with_error!(&env, ContractError::MilestoneNotActive);
+        return Err(ContractError::MilestoneNotActive);
     }
 
     if amount <= 0 {
-        panic_with_error!(&env, ContractError::ZeroAmount);
+        return Err(ContractError::ZeroAmount);
     } else if amount > milestone.reward {
-        panic_with_error!(&env, ContractError::ReleaseTooLarge);
+        return Err(ContractError::ReleaseTooLarge);
     }
 
     let contributor = milestone.contributor.clone();
