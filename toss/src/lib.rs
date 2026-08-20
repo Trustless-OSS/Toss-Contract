@@ -310,7 +310,7 @@ impl TOSSContract {
 
         let actual_release_amount = match contributor {
             PayoutTarget::Stellar(_) => amount,
-            PayoutTarget::Cctp(_, _) => cctp::truncate_to_6_decimals(amount),
+            PayoutTarget::Cctp(_, _) => amount - cctp::cctp_remainder(amount),
             PayoutTarget::None => return Err(ContractError::ContributorNotSet),
         };
 

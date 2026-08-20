@@ -1,4 +1,7 @@
 #![cfg(test)]
+// The V2 deposit_for_burn mock and its macro-generated client carry up to 9
+// parameters; the messenger interface itself is fixed by Circle.
+#![allow(clippy::too_many_arguments)]
 
 use soroban_sdk::testutils::storage::Persistent as _;
 use soroban_sdk::testutils::Events as _;
@@ -10,21 +13,62 @@ use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
 use soroban_sdk::TryIntoVal;
 use soroban_sdk::{token, Address, Env, Map, Symbol, Val, Vec};
 
+#[soroban_sdk::contracttype]
+#[derive(Clone)]
+pub struct MockDepositArgs {
+    pub caller: Address,
+    pub amount: i128,
+    pub destination_domain: u32,
+    pub mint_recipient: soroban_sdk::BytesN<32>,
+    pub burn_token: Address,
+    pub destination_caller: soroban_sdk::BytesN<32>,
+    pub max_fee: i128,
+    pub min_finality_threshold: u32,
+}
+
 #[soroban_sdk::contract]
 pub struct MockCctpContract;
 
 #[soroban_sdk::contractimpl]
 impl MockCctpContract {
+    /// V2 TokenMessengerMinter signature (mirrors `cctp::CctpTokenMessengerMinter`).
+    /// Records the received arguments so tests can assert exactly what the
+    /// release path handed to the messenger.
     pub fn deposit_for_burn(
-        _env: Env,
-        _amount: i128,
-        _destination_domain: u32,
-        _mint_recipient: soroban_sdk::BytesN<32>,
-        _mint_token: Address,
-    ) -> u64 {
-        // Just return a dummy value
-        1
+        env: Env,
+        caller: Address,
+        amount: i128,
+        destination_domain: u32,
+        mint_recipient: soroban_sdk::BytesN<32>,
+        burn_token: Address,
+        destination_caller: soroban_sdk::BytesN<32>,
+        max_fee: i128,
+        min_finality_threshold: u32,
+    ) {
+        env.storage().persistent().set(
+            &Symbol::new(&env, "last_deposit"),
+            &MockDepositArgs {
+                caller,
+                amount,
+                destination_domain,
+                mint_recipient,
+                burn_token,
+                destination_caller,
+                max_fee,
+                min_finality_threshold,
+            },
+        );
     }
+}
+
+/// Reads the arguments recorded by the mock CCTP contract on its last call.
+fn last_mock_deposit(env: &Env, cctp_address: &Address) -> MockDepositArgs {
+    env.as_contract(cctp_address, || {
+        env.storage()
+            .persistent()
+            .get(&Symbol::new(env, "last_deposit"))
+            .unwrap()
+    })
 }
 
 fn setup_env() -> (Env, soroban_sdk::Address) {
@@ -1294,6 +1338,31 @@ fn test_cctp_release_non_multiple() {
     // Remaining 7 stroops stays in the available balance.
     let balance = setup.client.get_balance();
     assert_eq!(balance.available, 500); // 1000 total deposited - 0 reserved - 500 total_released = 500
+
+    // The mock messenger received the truncated amount and the exact V2
+    // parameters chosen by the contract.
+    let cctp_address = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(
+        &setup.env,
+        cctp::CCTP_TOKEN_MESSENGER_MINTER,
+    ));
+    let deposit = last_mock_deposit(&setup.env, &cctp_address);
+    assert_eq!(deposit.caller, setup.contract_id);
+    assert_eq!(deposit.amount, 500);
+    assert_eq!(deposit.destination_domain, 0);
+    assert_eq!(
+        deposit.mint_recipient,
+        soroban_sdk::BytesN::from_array(&setup.env, &valid_recipient)
+    );
+    assert_eq!(deposit.burn_token, setup.token);
+    assert_eq!(
+        deposit.destination_caller,
+        soroban_sdk::BytesN::from_array(&setup.env, &[0u8; 32])
+    );
+    assert_eq!(deposit.max_fee, 0);
+    assert_eq!(
+        deposit.min_finality_threshold,
+        cctp::CCTP_MIN_FINALITY_THRESHOLD
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1711,6 +1780,34 @@ fn test_cctp_valid_solana_recipient() {
         ),
     );
     assert!(result.is_ok());
+}
+
+#[test]
+fn test_assign_contributor_invalid_domain() {
+    let setup = setup_funding_env(1_000);
+
+    let result = setup.client.try_assign_contributor(
+        &1,
+        &PayoutTarget::Cctp(
+            999, // not a Circle CCTP domain
+            soroban_sdk::BytesN::from_array(&setup.env, &[1; 32]),
+        ),
+    );
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::InvalidDomain);
+}
+
+#[test]
+fn test_assign_contributor_empty_recipient() {
+    let setup = setup_funding_env(1_000);
+
+    let result = setup.client.try_assign_contributor(
+        &1,
+        &PayoutTarget::Cctp(
+            0, // Ethereum domain, all-zero recipient
+            soroban_sdk::BytesN::from_array(&setup.env, &[0; 32]),
+        ),
+    );
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EmptyRecipient);
 }
 
 // ---------------------------------------------------------------------------

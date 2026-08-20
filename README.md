@@ -11,7 +11,7 @@
 [![Stellar](https://img.shields.io/badge/Network-Stellar-08B5E5?logo=stellar&logoColor=white)](https://stellar.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22C55E.svg)](LICENSE)
 
-[Quick start](#-quick-start) · [How it works](#-how-it-works) · [Contract API](docs/contract-spec.md) · [Architecture](docs/arch.md) · [Contributing](docs/contributing.md)
+[Quick start](#-quick-start) · [How it works](#-how-it-works) · [Contract API](docs/contract-spec.md) · [Architecture](docs/arch.md) · [CCTP report](docs/cctp_report.md) · [Contributing](docs/contributing.md)
 
 </div>
 
