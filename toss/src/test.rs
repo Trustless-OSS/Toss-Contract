@@ -2380,6 +2380,23 @@ fn test_reassign_contributor_blocked_when_paused() {
 }
 
 #[test]
+fn test_reassign_contributor_rejects_invalid_cctp_target() {
+    let setup = setup_pending_milestone(1_000, 300);
+    let contributor = Address::generate(&setup.env);
+    setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor))
+        .unwrap()
+        .unwrap();
+
+    let result = setup.client.try_reassign_contributor(
+        &1,
+        &PayoutTarget::Cctp(999, soroban_sdk::BytesN::from_array(&setup.env, &[1; 32])),
+    );
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::InvalidDomain);
+}
+
+#[test]
 fn test_release_funds_blocked_when_paused() {
     let setup = setup_funding_env(1_000);
     setup.client.try_deposit_funds(&1_000).unwrap().unwrap();

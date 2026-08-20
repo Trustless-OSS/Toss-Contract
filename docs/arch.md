@@ -1,6 +1,6 @@
 # Trustless-OSS Contract Architecture
 
-This document describes the current implementation in `trustless-oss/src`. The contract stores one repository escrow per deployed contract instance. A backend can deploy separate instances when it needs separate isolation boundaries.
+This document describes the current implementation in `toss/src`. The contract stores one repository escrow per deployed contract instance. A backend can deploy separate instances when it needs separate isolation boundaries.
 
 ## System context
 
@@ -38,10 +38,16 @@ flowchart TB
 
 | Module | Responsibility |
 | --- | --- |
-| `lib.rs` | Contract entry points, escrow/milestone transitions, and token transfers. |
+| `lib.rs` | Contract declaration and thin ABI-preserving entry-point wrappers. |
+| `admin.rs` | Initialization, admin transfer, maintainer/platform updates, and pause/resume transitions. |
+| `funding.rs` | Deposits, withdrawals, and escrow balance queries. |
+| `milestones.rs` | Milestone creation, updates, assignment, cancellation, and queries. |
+| `payouts.rs` | Contributor payout release and payout accounting. |
+| `accounting.rs` | Checked balance arithmetic and available-balance calculation. |
 | `types.rs` | `EscrowState`, `Milestone`, `MilestoneStatus`, `PayoutTarget`, and `BalanceInfo` contract types. |
 | `storage.rs` | Persistent keys, reads/writes, issue-ID indexing, and storage TTL extension. |
 | `auth.rs` | Soroban authorization checks for the maintainer, platform, and active escrow state. |
+| `cctp.rs` | CCTP target validation, amount normalization, and cross-chain burn integration. |
 | `events.rs` | Typed event topics emitted after state-changing operations. |
 | `error.rs` | Stable numeric `ContractError` values returned by entry points. |
 | `test.rs` | In-memory Soroban environment, token mocks, authorization tests, and payout tests. |
