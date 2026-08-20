@@ -77,7 +77,7 @@ impl TOSSContract {
         let token_client = token::Client::new(&env, &escrow.token);
         token_client.transfer(&escrow.maintainer, env.current_contract_address(), &amount);
 
-        escrow.total_deposited += amount;
+        escrow.total_deposited = escrow.total_deposited.checked_add(amount).expect("math overflow");
         storage::set_escrow(&env, &escrow);
         events::emit_funds_deposited(&env, amount, escrow.total_deposited);
 
@@ -108,7 +108,7 @@ impl TOSSContract {
         let token_client = token::Client::new(&env, &escrow.token);
         token_client.transfer(&env.current_contract_address(), &escrow.maintainer, &amount);
 
-        escrow.total_deposited -= amount;
+        escrow.total_deposited = escrow.total_deposited.checked_sub(amount).expect("math underflow");
         storage::set_escrow(&env, &escrow);
 
         let new_available = escrow
@@ -151,7 +151,7 @@ impl TOSSContract {
             actual_released: 0,
         };
 
-        escrow.reserved += reward;
+        escrow.reserved = escrow.reserved.checked_add(reward).expect("math overflow");
         storage::set_escrow(&env, &escrow);
         storage::set_milestone(&env, issue_id, &milestone);
         storage::push_issue_id(&env, issue_id);
@@ -200,7 +200,7 @@ impl TOSSContract {
             }
         }
 
-        escrow.reserved += delta;
+        escrow.reserved = escrow.reserved.checked_add(delta).expect("math overflow");
         milestone.reward = reward;
 
         storage::set_escrow(&env, &escrow);
@@ -316,8 +316,8 @@ impl TOSSContract {
             PayoutTarget::None => return Err(ContractError::ContributorNotSet),
         };
 
-        escrow.reserved -= milestone.reward;
-        escrow.total_released += actual_release_amount;
+        escrow.reserved = escrow.reserved.checked_sub(milestone.reward).expect("math underflow");
+        escrow.total_released = escrow.total_released.checked_add(actual_release_amount).expect("math overflow");
 
         milestone.status = MilestoneStatus::Released;
         milestone.actual_released = actual_release_amount;
@@ -354,7 +354,7 @@ impl TOSSContract {
             return Err(ContractError::MilestoneNotActive);
         }
 
-        escrow.reserved -= milestone.reward;
+        escrow.reserved = escrow.reserved.checked_sub(milestone.reward).expect("math underflow");
         milestone.status = MilestoneStatus::Cancelled;
         storage::set_escrow(&env, &escrow);
         storage::set_milestone(&env, issue_id, &milestone);
