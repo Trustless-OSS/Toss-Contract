@@ -51,12 +51,30 @@ pub fn has_valid_padding(domain: u32, recipient: &BytesN<32>) -> bool {
     true
 }
 
+pub(crate) fn validate_cctp_target(target: &PayoutTarget) -> Result<(), ContractError> {
+    if let PayoutTarget::Cctp(domain, recipient) = target {
+        if !is_supported_domain(*domain) {
+            return Err(ContractError::InvalidDomain);
+        }
+        if recipient.iter().all(|b| b == 0) {
+            return Err(ContractError::EmptyRecipient);
+        }
+        if !has_valid_padding(*domain, recipient) {
+            return Err(ContractError::InvalidCctpRecipientPadding);
+        }
+    }
+
+    Ok(())
+}
+
 pub fn cc_release_fund(
     env: &Env,
     token: &Address,
     target: &PayoutTarget,
     amount: i128,
 ) -> Result<(), ContractError> {
+    validate_cctp_target(target)?;
+
     match target {
         PayoutTarget::None => Err(ContractError::ContributorNotSet),
         PayoutTarget::Stellar(recipient_address) => {
@@ -65,16 +83,6 @@ pub fn cc_release_fund(
             Ok(())
         }
         PayoutTarget::Cctp(destination_domain, recipient) => {
-            if !is_supported_domain(*destination_domain) {
-                return Err(ContractError::InvalidDomain);
-            }
-            if recipient.iter().all(|b| b == 0) {
-                return Err(ContractError::EmptyRecipient);
-            }
-            if !has_valid_padding(*destination_domain, recipient) {
-                return Err(ContractError::InvalidCctpRecipientPadding);
-            }
-
             if amount == 0 {
                 return Err(ContractError::ZeroBurnAmount);
             }
