@@ -80,11 +80,11 @@ pub(crate) fn assign_contributor(
     issue_id: u64,
     contributor: PayoutTarget,
 ) -> Result<(), ContractError> {
-    cctp::validate_cctp_target(&contributor)?;
-
     let escrow = storage::get_escrow(&env)?;
     auth::require_maintainer(&escrow);
     auth::require_active(&escrow)?;
+
+    cctp::validate_cctp_target(&contributor)?;
 
     let mut milestone = storage::get_milestone(&env, issue_id)?;
     if milestone.status != MilestoneStatus::Pending {
@@ -104,11 +104,11 @@ pub(crate) fn reassign_contributor(
     issue_id: u64,
     new_contributor: PayoutTarget,
 ) -> Result<(), ContractError> {
-    cctp::validate_cctp_target(&new_contributor)?;
-
     let escrow = storage::get_escrow(&env)?;
     auth::require_maintainer(&escrow);
     auth::require_active(&escrow)?;
+
+    cctp::validate_cctp_target(&new_contributor)?;
 
     let mut milestone = storage::get_milestone(&env, issue_id)?;
     if milestone.status != MilestoneStatus::Active {

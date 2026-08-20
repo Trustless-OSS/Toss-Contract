@@ -2472,6 +2472,30 @@ fn test_assign_contributor_blocked_when_paused() {
 }
 
 #[test]
+fn test_assign_contributor_pause_precedes_invalid_target() {
+    let setup = setup_pending_milestone(1_000, 300);
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let result = setup.client.try_assign_contributor(
+        &1,
+        &PayoutTarget::Cctp(999, soroban_sdk::BytesN::from_array(&setup.env, &[1; 32])),
+    );
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized function call for address")]
+fn test_assign_contributor_auth_precedes_invalid_target() {
+    let setup = setup_pending_milestone(1_000, 300);
+    setup.env.set_auths(&[]);
+
+    setup.client.assign_contributor(
+        &1,
+        &PayoutTarget::Cctp(999, soroban_sdk::BytesN::from_array(&setup.env, &[1; 32])),
+    );
+}
+
+#[test]
 fn test_reassign_contributor_blocked_when_paused() {
     let setup = setup_pending_milestone(1_000, 300);
     let contributor = Address::generate(&setup.env);
@@ -2487,6 +2511,42 @@ fn test_reassign_contributor_blocked_when_paused() {
         .client
         .try_reassign_contributor(&1, &PayoutTarget::Stellar(new_contributor));
     assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+}
+
+#[test]
+fn test_reassign_contributor_pause_precedes_invalid_target() {
+    let setup = setup_pending_milestone(1_000, 300);
+    let contributor = Address::generate(&setup.env);
+    setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor))
+        .unwrap()
+        .unwrap();
+    setup.client.try_pause_escrow(&None).unwrap().unwrap();
+
+    let result = setup.client.try_reassign_contributor(
+        &1,
+        &PayoutTarget::Cctp(999, soroban_sdk::BytesN::from_array(&setup.env, &[1; 32])),
+    );
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EscrowInactive);
+}
+
+#[test]
+#[should_panic(expected = "Unauthorized function call for address")]
+fn test_reassign_contributor_auth_precedes_invalid_target() {
+    let setup = setup_pending_milestone(1_000, 300);
+    let contributor = Address::generate(&setup.env);
+    setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor))
+        .unwrap()
+        .unwrap();
+    setup.env.set_auths(&[]);
+
+    setup.client.reassign_contributor(
+        &1,
+        &PayoutTarget::Cctp(999, soroban_sdk::BytesN::from_array(&setup.env, &[1; 32])),
+    );
 }
 
 #[test]
