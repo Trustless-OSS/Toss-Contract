@@ -52,7 +52,9 @@ The contract maintains this derived balance:
 available = total_deposited - reserved - total_released
 ```
 
-Milestone creation must fit within `available`, withdrawals cannot exceed it, and releasing or cancelling a milestone reduces `reserved`. The tests exercise funding, reservation, withdrawal, and Stellar payout paths.
+`total_deposited` is the current principal accounted by the escrow, not lifetime deposit volume. Deposits increase it and withdrawals decrement it; indexers that need cumulative deposit volume must compute that from deposit events instead of this field.
+
+The three accounting fields are locked together with checked arithmetic. `reserved` is the sum of rewards for milestones in `Pending` or `Active`, `total_released` is the sum of `actual_released` for milestones in `Released`, and cancelled milestones contribute zero to both totals. Milestone creation and reward increases must fit within `available`, withdrawals cannot exceed it, and releasing or cancelling a milestone reduces `reserved`. A partial release un-reserves the full reward but adds only the actual payout to `total_released`, so any unpaid or CCTP-truncated remainder stays in `available`.
 
 ## Storage and events
 
@@ -73,7 +75,7 @@ State-changing methods emit typed events for initialization, deposits, withdrawa
 | --- | --- |
 | 1–3 | `NotAdmin`, `NotPlatform`, `NotMaintainer` |
 | 10–12 | `EscrowNotFound`, `EscrowAlreadyExists`, `EscrowInactive` |
-| 20–22 | `InsufficientBalance`, `WithdrawExceedsAvailable`, `ZeroAmount` |
+| 20–23 | `InsufficientBalance`, `WithdrawExceedsAvailable`, `ZeroAmount`, `BalanceInvariantBroken` |
 | 30–34 | `MilestoneNotFound`, `MilestoneNotPending`, `MilestoneNotActive`, `DuplicateIssueId`, `ReleaseTooLarge` |
 | 40 | `ContributorNotSet` |
 | 50–53 | `InvalidDomain`, `EmptyRecipient`, `ZeroBurnAmount`, `InvalidCctpRecipientPadding` |

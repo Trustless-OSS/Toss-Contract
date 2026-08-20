@@ -76,7 +76,7 @@ All application keys are stored in Soroban persistent storage and writes extend 
 
 The deployed contract has one `EscrowState`, not a map of escrow IDs. Its state tracks:
 
-- `total_deposited`: cumulative funds added to the contract balance.
+- `total_deposited`: current principal accounted by the escrow; deposits increase it and withdrawals decrement it.
 - `reserved`: rewards belonging to pending or active milestones.
 - `total_released`: cumulative amount paid to contributors.
 - `available`: derived as `total_deposited - reserved - total_released`.

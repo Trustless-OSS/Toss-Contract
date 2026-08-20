@@ -2,6 +2,7 @@
 
 use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, Bytes, Env, Vec};
 
+pub mod accounting;
 pub mod auth;
 pub mod cctp;
 pub mod error;
@@ -12,6 +13,7 @@ pub mod types;
 #[cfg(test)]
 mod test;
 
+use accounting::{checked_add_balance, checked_sub_balance, compute_available};
 use cctp::cc_release_fund;
 use error::ContractError;
 use types::{BalanceInfo, EscrowState, Milestone, MilestoneStatus, PayoutTarget};
@@ -74,10 +76,12 @@ impl TOSSContract {
             panic_with_error!(&env, ContractError::ZeroAmount);
         }
 
+        let new_total_deposited = checked_add_balance(escrow.total_deposited, amount)?;
+
         let token_client = token::Client::new(&env, &escrow.token);
         token_client.transfer(&escrow.maintainer, env.current_contract_address(), &amount);
 
-        escrow.total_deposited += amount;
+        escrow.total_deposited = new_total_deposited;
         storage::set_escrow(&env, &escrow);
         events::emit_funds_deposited(&env, amount, escrow.total_deposited);
 
@@ -94,29 +98,21 @@ impl TOSSContract {
             panic_with_error!(&env, ContractError::ZeroAmount);
         }
 
-        let available = escrow
-            .total_deposited
-            .checked_sub(escrow.reserved)
-            .unwrap_or(0)
-            .checked_sub(escrow.total_released)
-            .unwrap_or(0);
+        let available = compute_available(&escrow)?;
 
         if amount > available {
             panic_with_error!(&env, ContractError::WithdrawExceedsAvailable);
         }
 
+        let new_total_deposited = checked_sub_balance(escrow.total_deposited, amount)?;
+
         let token_client = token::Client::new(&env, &escrow.token);
         token_client.transfer(&env.current_contract_address(), &escrow.maintainer, &amount);
 
-        escrow.total_deposited -= amount;
+        escrow.total_deposited = new_total_deposited;
         storage::set_escrow(&env, &escrow);
 
-        let new_available = escrow
-            .total_deposited
-            .checked_sub(escrow.reserved)
-            .unwrap_or(0)
-            .checked_sub(escrow.total_released)
-            .unwrap_or(0);
+        let new_available = compute_available(&escrow)?;
         events::emit_funds_withdrawn(&env, amount, new_available);
 
         Ok(())
@@ -136,8 +132,8 @@ impl TOSSContract {
             return Err(ContractError::DuplicateIssueId);
         }
 
-        let balance = Self::get_balance(env.clone())?;
-        if reward > balance.available {
+        let available = compute_available(&escrow)?;
+        if reward > available {
             return Err(ContractError::InsufficientBalance);
         }
 
@@ -151,7 +147,7 @@ impl TOSSContract {
             actual_released: 0,
         };
 
-        escrow.reserved += reward;
+        escrow.reserved = checked_add_balance(escrow.reserved, reward)?;
         storage::set_escrow(&env, &escrow);
         storage::set_milestone(&env, issue_id, &milestone);
         storage::push_issue_id(&env, issue_id);
@@ -189,18 +185,20 @@ impl TOSSContract {
         }
 
         let old_reward = milestone.reward;
-        let delta = reward - old_reward;
+        let delta = reward
+            .checked_sub(old_reward)
+            .ok_or(ContractError::BalanceInvariantBroken)?;
 
         // Only an increase can outgrow the pool; `available` already nets out the
         // milestone's current reservation, so the extra `delta` must fit on top of it.
         if delta > 0 {
-            let balance = Self::get_balance(env.clone())?;
-            if delta > balance.available {
+            let available = compute_available(&escrow)?;
+            if delta > available {
                 return Err(ContractError::InsufficientBalance);
             }
         }
 
-        escrow.reserved += delta;
+        escrow.reserved = checked_add_balance(escrow.reserved, delta)?;
         milestone.reward = reward;
 
         storage::set_escrow(&env, &escrow);
@@ -316,8 +314,8 @@ impl TOSSContract {
             PayoutTarget::None => return Err(ContractError::ContributorNotSet),
         };
 
-        escrow.reserved -= milestone.reward;
-        escrow.total_released += actual_release_amount;
+        escrow.reserved = checked_sub_balance(escrow.reserved, milestone.reward)?;
+        escrow.total_released = checked_add_balance(escrow.total_released, actual_release_amount)?;
 
         milestone.status = MilestoneStatus::Released;
         milestone.actual_released = actual_release_amount;
@@ -328,7 +326,10 @@ impl TOSSContract {
 
         cc_release_fund(&env, &escrow.token, &contributor, actual_release_amount)?;
 
-        let returned_to_pool = milestone.reward - actual_release_amount;
+        let returned_to_pool = milestone
+            .reward
+            .checked_sub(actual_release_amount)
+            .ok_or(ContractError::BalanceInvariantBroken)?;
         events::emit_funds_released(
             &env,
             issue_id,
@@ -354,7 +355,7 @@ impl TOSSContract {
             return Err(ContractError::MilestoneNotActive);
         }
 
-        escrow.reserved -= milestone.reward;
+        escrow.reserved = checked_sub_balance(escrow.reserved, milestone.reward)?;
         milestone.status = MilestoneStatus::Cancelled;
         storage::set_escrow(&env, &escrow);
         storage::set_milestone(&env, issue_id, &milestone);
@@ -464,11 +465,7 @@ impl TOSSContract {
         let total_deposited = escrow.total_deposited;
         let reserved = escrow.reserved;
         let total_released = escrow.total_released;
-        let available = total_deposited
-            .checked_sub(reserved)
-            .unwrap_or(0)
-            .checked_sub(total_released)
-            .unwrap_or(0);
+        let available = compute_available(&escrow)?;
         Ok(BalanceInfo {
             total_deposited,
             reserved,
