@@ -1,5 +1,6 @@
+use crate::error::ContractError;
 use crate::types::EscrowState;
-use soroban_sdk::{panic_with_error, Address, Env};
+use soroban_sdk::Address;
 
 pub fn require_platform(escrow: &EscrowState) {
     escrow.platform.require_auth();
@@ -13,8 +14,10 @@ pub fn require_admin(admin: &Address) {
     admin.require_auth();
 }
 
-pub fn require_active(env: &Env, escrow: &EscrowState) {
+pub fn require_active(escrow: &EscrowState) -> Result<(), ContractError> {
     if !escrow.is_active {
-        panic_with_error!(env, crate::error::ContractError::EscrowInactive);
+        return Err(ContractError::EscrowInactive);
     }
+
+    Ok(())
 }

@@ -6,8 +6,6 @@ use soroban_sdk::contracterror;
 pub enum ContractError {
     // Auth
     NotAdmin = 1,
-    NotPlatform = 2,
-    NotMaintainer = 3,
 
     // Escrow
     EscrowNotFound = 10,
@@ -24,9 +22,10 @@ pub enum ContractError {
     // Milestone
     MilestoneNotFound = 30,
     MilestoneNotPending = 31, // assign_contributor requires Pending
-    MilestoneNotActive = 32,  // release/cancel requires Active
+    MilestoneNotActive = 32,  // release/reassignment requires Active
     DuplicateIssueId = 33,
     ReleaseTooLarge = 34, // release_funds amount > milestone reward
+    MilestoneNotCancellable = 35,
 
     // Contributor
     ContributorNotSet = 40,
