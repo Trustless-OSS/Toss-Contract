@@ -3209,5 +3209,3 @@ fn test_e2e_event_sequence_full_release() {
     assert_eq!(actual_released_rf, 600);
     assert_eq!(returned_to_pool_rf, 0);
 }
-
-
