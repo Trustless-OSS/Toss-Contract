@@ -2767,3 +2767,447 @@ fn test_pause_resume_with_milestone_state() {
     let milestone_after = setup.client.get_milestone(&1);
     assert_eq!(milestone_after.status, MilestoneStatus::Active);
 }
+
+// ---------------------------------------------------------------------------
+// End-to-end lifecycle tests (#4)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_e2e_full_release_flow() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    let contributor = Address::generate(&setup.env);
+    setup
+        .client
+        .try_create_milestone(&1, &500)
+        .unwrap()
+        .unwrap();
+
+    setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor.clone()))
+        .unwrap()
+        .unwrap();
+
+    setup.client.try_release_funds(&1, &500).unwrap().unwrap();
+
+    // Verify token balance moved to contributor
+    let token_client = token::Client::new(&setup.env, &setup.token);
+    assert_eq!(token_client.balance(&contributor), 500);
+    assert_eq!(token_client.balance(&setup.contract_id), 500);
+
+    // Verify escrow state and balances
+    let escrow = setup.client.get_escrow();
+    assert_eq!(escrow.reserved, 0);
+    assert_eq!(escrow.total_released, 500);
+    assert_eq!(escrow.total_deposited, 1_000);
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.available, 500);
+    assert_eq!(balance.reserved, 0);
+    assert_eq!(balance.total_released, 500);
+
+    // Verify milestone status and actual_released
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.status, MilestoneStatus::Released);
+    assert_eq!(milestone.actual_released, 500);
+
+    assert_accounting_invariants(&setup);
+}
+
+#[test]
+fn test_e2e_partial_release_flow() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    let contributor = Address::generate(&setup.env);
+    setup
+        .client
+        .try_create_milestone(&1, &500)
+        .unwrap()
+        .unwrap();
+
+    setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor.clone()))
+        .unwrap()
+        .unwrap();
+
+    // Partial release: 300 out of 500 reward
+    setup.client.try_release_funds(&1, &300).unwrap().unwrap();
+
+    // Verify contributor receives partial amount and contract holds remainder
+    let token_client = token::Client::new(&setup.env, &setup.token);
+    assert_eq!(token_client.balance(&contributor), 300);
+    assert_eq!(token_client.balance(&setup.contract_id), 700);
+
+    // Remainder (200) returned to available pool, reserved becomes 0
+    let escrow = setup.client.get_escrow();
+    assert_eq!(escrow.reserved, 0);
+    assert_eq!(escrow.total_released, 300);
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.available, 700); // 1000 deposited - 0 reserved - 300 released
+    assert_eq!(balance.reserved, 0);
+    assert_eq!(balance.total_released, 300);
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.status, MilestoneStatus::Released);
+    assert_eq!(milestone.actual_released, 300);
+
+    assert_accounting_invariants(&setup);
+}
+
+#[test]
+fn test_e2e_reassign_then_release_flow() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    let original_contributor = Address::generate(&setup.env);
+    let new_contributor = Address::generate(&setup.env);
+
+    setup
+        .client
+        .try_create_milestone(&1, &500)
+        .unwrap()
+        .unwrap();
+
+    setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(original_contributor.clone()))
+        .unwrap()
+        .unwrap();
+
+    setup
+        .client
+        .try_reassign_contributor(&1, &PayoutTarget::Stellar(new_contributor.clone()))
+        .unwrap()
+        .unwrap();
+
+    setup.client.try_release_funds(&1, &500).unwrap().unwrap();
+
+    // Verify funds go to the new contributor, not the original one
+    let token_client = token::Client::new(&setup.env, &setup.token);
+    assert_eq!(token_client.balance(&new_contributor), 500);
+    assert_eq!(token_client.balance(&original_contributor), 0);
+
+    let escrow = setup.client.get_escrow();
+    assert_eq!(escrow.reserved, 0);
+    assert_eq!(escrow.total_released, 500);
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.status, MilestoneStatus::Released);
+    assert_eq!(
+        milestone.contributor,
+        PayoutTarget::Stellar(new_contributor)
+    );
+
+    assert_accounting_invariants(&setup);
+}
+
+#[test]
+fn test_e2e_cancel_from_pending_flow() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup
+        .client
+        .try_create_milestone(&1, &400)
+        .unwrap()
+        .unwrap();
+
+    let balance_before = setup.client.get_balance();
+    assert_eq!(balance_before.reserved, 400);
+    assert_eq!(balance_before.available, 600);
+
+    setup.client.try_cancel_milestone(&1).unwrap().unwrap();
+
+    // Verify reserved decremented, available pool restored, milestone is Cancelled
+    let balance_after = setup.client.get_balance();
+    assert_eq!(balance_after.reserved, 0);
+    assert_eq!(balance_after.available, 1_000);
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.status, MilestoneStatus::Cancelled);
+
+    assert_accounting_invariants(&setup);
+}
+
+#[test]
+fn test_e2e_cancel_from_active_flow() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    let contributor = Address::generate(&setup.env);
+    setup
+        .client
+        .try_create_milestone(&1, &400)
+        .unwrap()
+        .unwrap();
+
+    setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(contributor.clone()))
+        .unwrap()
+        .unwrap();
+
+    let milestone_active = setup.client.get_milestone(&1);
+    assert_eq!(milestone_active.status, MilestoneStatus::Active);
+
+    setup.client.try_cancel_milestone(&1).unwrap().unwrap();
+
+    // Verify accounting matches cancel from pending, status is Cancelled, contributor gets nothing
+    let balance_after = setup.client.get_balance();
+    assert_eq!(balance_after.reserved, 0);
+    assert_eq!(balance_after.available, 1_000);
+
+    let token_client = token::Client::new(&setup.env, &setup.token);
+    assert_eq!(token_client.balance(&contributor), 0);
+
+    let milestone = setup.client.get_milestone(&1);
+    assert_eq!(milestone.status, MilestoneStatus::Cancelled);
+
+    assert_accounting_invariants(&setup);
+}
+
+#[test]
+fn test_e2e_multiple_milestones_accounting_integrity() {
+    let setup = setup_funding_env(2_000);
+    setup.client.try_deposit_funds(&2_000).unwrap().unwrap();
+
+    // Create 3 milestones
+    setup
+        .client
+        .try_create_milestone(&1, &500)
+        .unwrap()
+        .unwrap();
+    setup
+        .client
+        .try_create_milestone(&2, &300)
+        .unwrap()
+        .unwrap();
+    setup
+        .client
+        .try_create_milestone(&3, &400)
+        .unwrap()
+        .unwrap();
+
+    let balance1 = setup.client.get_balance();
+    assert_eq!(balance1.reserved, 1_200);
+    assert_eq!(balance1.available, 800);
+    assert_accounting_invariants(&setup);
+
+    // Release Milestone 1 (full 500)
+    let c1 = Address::generate(&setup.env);
+    setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Stellar(c1))
+        .unwrap()
+        .unwrap();
+    setup.client.try_release_funds(&1, &500).unwrap().unwrap();
+    assert_accounting_invariants(&setup);
+
+    // Release Milestone 2 (partial 200 out of 300)
+    let c2 = Address::generate(&setup.env);
+    setup
+        .client
+        .try_assign_contributor(&2, &PayoutTarget::Stellar(c2))
+        .unwrap()
+        .unwrap();
+    setup.client.try_release_funds(&2, &200).unwrap().unwrap();
+    assert_accounting_invariants(&setup);
+
+    // Cancel Milestone 3
+    setup.client.try_cancel_milestone(&3).unwrap().unwrap();
+    assert_accounting_invariants(&setup);
+
+    // Final verification of total_released, reserved, and available consistency
+    let final_balance = setup.client.get_balance();
+    assert_eq!(final_balance.total_released, 700); // 500 + 200
+    assert_eq!(final_balance.reserved, 0);
+    assert_eq!(final_balance.available, 1_300); // 2000 - 700
+    assert_eq!(final_balance.total_deposited, 2_000);
+}
+
+#[test]
+fn test_e2e_deposit_after_milestones_created() {
+    let setup = setup_funding_env(500);
+    setup.client.try_deposit_funds(&500).unwrap().unwrap();
+
+    setup
+        .client
+        .try_create_milestone(&1, &300)
+        .unwrap()
+        .unwrap();
+
+    let balance_before = setup.client.get_balance();
+    assert_eq!(balance_before.reserved, 300);
+    assert_eq!(balance_before.available, 200);
+
+    // Mint and deposit 1,000 more tokens
+    let sac = token::StellarAssetClient::new(&setup.env, &setup.token);
+    sac.mint(&setup.maintainer, &1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    // Verify available increases but reserved is unchanged
+    let balance_after = setup.client.get_balance();
+    assert_eq!(balance_after.reserved, 300);
+    assert_eq!(balance_after.total_deposited, 1_500);
+    assert_eq!(balance_after.available, 1_200);
+
+    assert_accounting_invariants(&setup);
+}
+
+#[test]
+fn test_e2e_withdraw_boundary_with_reserved() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup
+        .client
+        .try_create_milestone(&1, &400)
+        .unwrap()
+        .unwrap();
+
+    let balance = setup.client.get_balance();
+    assert_eq!(balance.reserved, 400);
+    assert_eq!(balance.available, 600);
+
+    // Try to withdraw past available boundary (601 > 600 available) -> assert error
+    let err = setup.client.try_withdraw_funds(&601);
+    assert_eq!(
+        err.unwrap_err().unwrap(),
+        ContractError::WithdrawExceedsAvailable
+    );
+
+    // Withdraw exactly available (600) -> assert success
+    setup.client.try_withdraw_funds(&600).unwrap().unwrap();
+
+    let final_balance = setup.client.get_balance();
+    assert_eq!(final_balance.available, 0);
+    assert_eq!(final_balance.reserved, 400);
+    assert_eq!(final_balance.total_deposited, 400);
+
+    assert_accounting_invariants(&setup);
+}
+
+#[test]
+fn test_e2e_event_sequence_full_release() {
+    let (env, contract_id) = setup_env();
+    let c = client(&env, &contract_id);
+    env.mock_all_auths();
+
+    let (maintainer, platform, _token) = addresses(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(maintainer.clone());
+    let token_addr = token_contract.address();
+
+    // 1. Initialize
+    c.try_initialize(&10, &maintainer, &platform, &token_addr)
+        .unwrap()
+        .unwrap();
+
+    let ev_init = env.events().all();
+    assert_eq!(ev_init.len(), 1);
+    let e_init = ev_init.get(0).unwrap();
+    let topic0_init: Symbol = e_init.1.get(0).unwrap().try_into_val(&env).unwrap();
+    let topic1_init: u64 = e_init.1.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic0_init, Symbol::new(&env, "escrow_initialized"));
+    assert_eq!(topic1_init, 10);
+
+    let data_init: Map<Symbol, Val> = e_init.2.try_into_val(&env).unwrap();
+    let maintainer_init: Address = data_init
+        .get_unchecked(Symbol::new(&env, "maintainer"))
+        .try_into_val(&env)
+        .unwrap();
+    assert_eq!(maintainer_init, maintainer);
+
+    // 2. Deposit Funds
+    let sac = token::StellarAssetClient::new(&env, &token_addr);
+    sac.mint(&maintainer, &1_000);
+    c.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    let ev_dep = env.events().all();
+    let e_dep = ev_dep.last().unwrap();
+    let topic0_dep: Symbol = e_dep.1.get(0).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic0_dep, Symbol::new(&env, "funds_deposited"));
+
+    let data_dep: Map<Symbol, Val> = e_dep.2.try_into_val(&env).unwrap();
+    let amount_dep: i128 = data_dep
+        .get_unchecked(Symbol::new(&env, "amount"))
+        .try_into_val(&env)
+        .unwrap();
+    let new_total_dep: i128 = data_dep
+        .get_unchecked(Symbol::new(&env, "new_total"))
+        .try_into_val(&env)
+        .unwrap();
+    assert_eq!(amount_dep, 1_000);
+    assert_eq!(new_total_dep, 1_000);
+
+    // 3. Create Milestone
+    c.try_create_milestone(&101, &600).unwrap().unwrap();
+
+    let ev_cm = env.events().all();
+    let e_cm = ev_cm.last().unwrap();
+    let topic0_cm: Symbol = e_cm.1.get(0).unwrap().try_into_val(&env).unwrap();
+    let topic1_cm: u64 = e_cm.1.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic0_cm, Symbol::new(&env, "milestone_created"));
+    assert_eq!(topic1_cm, 101);
+
+    let data_cm: Map<Symbol, Val> = e_cm.2.try_into_val(&env).unwrap();
+    let reward_cm: i128 = data_cm
+        .get_unchecked(Symbol::new(&env, "reward"))
+        .try_into_val(&env)
+        .unwrap();
+    assert_eq!(reward_cm, 600);
+
+    // 4. Assign Contributor
+    let contributor = Address::generate(&env);
+    let target = PayoutTarget::Stellar(contributor.clone());
+    c.try_assign_contributor(&101, &target).unwrap().unwrap();
+
+    let ev_ac = env.events().all();
+    let e_ac = ev_ac.last().unwrap();
+    let topic0_ac: Symbol = e_ac.1.get(0).unwrap().try_into_val(&env).unwrap();
+    let topic1_ac: u64 = e_ac.1.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic0_ac, Symbol::new(&env, "contributor_assigned"));
+    assert_eq!(topic1_ac, 101);
+
+    let data_ac: Map<Symbol, Val> = e_ac.2.try_into_val(&env).unwrap();
+    let contributor_ac: PayoutTarget = data_ac
+        .get_unchecked(Symbol::new(&env, "contributor"))
+        .try_into_val(&env)
+        .unwrap();
+    assert_eq!(contributor_ac, target);
+
+    // 5. Release Funds
+    c.try_release_funds(&101, &600).unwrap().unwrap();
+
+    let ev_rf = env.events().all();
+    let e_rf = ev_rf.last().unwrap();
+    let topic0_rf: Symbol = e_rf.1.get(0).unwrap().try_into_val(&env).unwrap();
+    let topic1_rf: u64 = e_rf.1.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic0_rf, Symbol::new(&env, "funds_released"));
+
+    assert_eq!(topic1_rf, 101);
+
+    let data_rf: Map<Symbol, Val> = e_rf.2.try_into_val(&env).unwrap();
+    let contributor_rf: PayoutTarget = data_rf
+        .get_unchecked(Symbol::new(&env, "contributor"))
+        .try_into_val(&env)
+        .unwrap();
+    let actual_released_rf: i128 = data_rf
+        .get_unchecked(Symbol::new(&env, "actual_released"))
+        .try_into_val(&env)
+        .unwrap();
+    let returned_to_pool_rf: i128 = data_rf
+        .get_unchecked(Symbol::new(&env, "returned_to_pool"))
+        .try_into_val(&env)
+        .unwrap();
+
+    assert_eq!(contributor_rf, target);
+    assert_eq!(actual_released_rf, 600);
+    assert_eq!(returned_to_pool_rf, 0);
+}
+
+
