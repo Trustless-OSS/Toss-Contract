@@ -98,6 +98,10 @@ Persistent storage keys are:
 | `EscrowIssueIds` | `Vec<u64>` index used for listing |
 | `Admin` | Stored initializer/admin address |
 
+Writes and idle-prone reads (`Escrow`, `Milestone`, `Admin`, `EscrowIssueIds`) extend that key and the contract instance to `env.storage().max_ttl()`.
+
+Outbound CCTP burns call Circle's `TokenMessengerMinter` selected by `env.ledger().network_id()`: pubnet uses `CAE2G5Z77UP7GYPYGFOWFGW7C7J6I4YP2AFGSADRKQY62SYUFLPNFTXL`, every other network id uses the testnet minter. Supported destination domains are `0` (Ethereum), `1` (Avalanche), `2` (OP Mainnet), `3` (Arbitrum), `4` (Noble), `5` (Solana), `6` (Base), `7` (Polygon PoS), and `25` (Starknet). EVM domains require 12-byte zero padding on the 32-byte recipient. Noble is allow-listed at assignment; Circle still documents it as CCTP V1-only, so a live V2 `deposit_for_burn` to domain `4` may fail at the messenger.
+
 State-changing methods emit typed events for initialization, deposits, withdrawals, milestone creation and updates, contributor assignment/reassignment, releases, and cancellation. The event topic payloads are defined in `toss/src/events.rs`.
 
 ## Error groups

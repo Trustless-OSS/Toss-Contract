@@ -7,9 +7,16 @@ use crate::types::PayoutTarget;
 use soroban_sdk::{contractclient, token, Address, BytesN, Env, String};
 
 /// Stellar testnet TokenMessengerMinter (V2), per Circle's Stellar CCTP
-/// contracts page (https://developers.circle.com/stablecoins/docs/stellar-cctp-contract-addresses).
-pub const CCTP_TOKEN_MESSENGER_MINTER: &str =
+/// contracts page (https://developers.circle.com/cctp/references/stellar-contracts).
+pub const CCTP_TOKEN_MESSENGER_MINTER_TESTNET: &str =
     "CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP";
+
+/// Stellar pubnet TokenMessengerMinter (V2), from the same Circle source.
+pub const CCTP_TOKEN_MESSENGER_MINTER_MAINNET: &str =
+    "CAE2G5Z77UP7GYPYGFOWFGW7C7J6I4YP2AFGSADRKQY62SYUFLPNFTXL";
+
+/// Alias kept for tests and tooling. Live burns use [`token_messenger_minter`].
+pub const CCTP_TOKEN_MESSENGER_MINTER: &str = CCTP_TOKEN_MESSENGER_MINTER_TESTNET;
 
 /// Stellar testnet MessageTransmitter, from the same Circle source. Outbound
 /// releases never call it (the recipient or a relayer executes the destination
@@ -22,12 +29,21 @@ pub const CCTP_MESSAGE_TRANSMITTER: &str =
 /// mint equals the burned amount and no fee is charged on receive.
 pub const CCTP_MIN_FINALITY_THRESHOLD: u32 = 2000;
 
+/// SHA-256 of `Public Global Stellar Network ; September 2015`.
+const PUBNET_NETWORK_ID: [u8; 32] = [
+    0x7a, 0xc3, 0x39, 0x97, 0x54, 0x4e, 0x31, 0x75, 0xd2, 0x66, 0xbd, 0x02, 0x24, 0x39, 0xb2, 0x2c,
+    0xdb, 0x16, 0x50, 0x8c, 0x01, 0x16, 0x3f, 0x26, 0xe5, 0xcb, 0x2a, 0x3e, 0x10, 0x45, 0xa9, 0x79,
+];
+
+fn is_evm_domain(domain: u32) -> bool {
+    // Ethereum: 0, Avalanche: 1, OP Mainnet: 2, Arbitrum: 3, Base: 6, Polygon PoS: 7.
+    matches!(domain, 0 | 1 | 2 | 3 | 6 | 7)
+}
+
 pub fn is_supported_domain(domain: u32) -> bool {
-    // Ethereum: 0, Avalanche: 1, OP Mainnet: 2, Arbitrum: 3, Solana: 5,
+    // Ethereum: 0, Avalanche: 1, OP Mainnet: 2, Arbitrum: 3, Noble: 4, Solana: 5,
     // Base: 6, Polygon PoS: 7, Starknet: 25.
-    // Domain 4 (Noble) is deliberately absent: it is CCTP V1-only and the
-    // V2 TokenMessengerMinter on Stellar does not support it.
-    matches!(domain, 0 | 1 | 2 | 3 | 5 | 6 | 7 | 25)
+    is_evm_domain(domain) || matches!(domain, 4 | 5 | 25)
 }
 
 pub fn truncate_to_6_decimals(amount: i128) -> i128 {
@@ -39,9 +55,8 @@ pub fn cctp_remainder(amount: i128) -> i128 {
 }
 
 pub fn has_valid_padding(domain: u32, recipient: &BytesN<32>) -> bool {
-    // EVM domains require the first 12 bytes to be zero.
-    // Ethereum: 0, Avalanche: 1, Arbitrum: 3, Base: 6, Polygon PoS: 7
-    if matches!(domain, 0 | 1 | 3 | 6 | 7) {
+    // EVM mintRecipient is address(uint160(uint256(bytes32))) — last 20 bytes.
+    if is_evm_domain(domain) {
         for i in 0..12 {
             if recipient.get(i).unwrap_or(0) != 0 {
                 return false;
@@ -49,6 +64,17 @@ pub fn has_valid_padding(domain: u32, recipient: &BytesN<32>) -> bool {
         }
     }
     true
+}
+
+/// TokenMessengerMinter for this ledger's network. Pubnet uses the mainnet
+/// strkey; every other network id (including the all-zero test host) uses testnet.
+pub fn token_messenger_minter(env: &Env) -> Address {
+    let strkey = if env.ledger().network_id().to_array() == PUBNET_NETWORK_ID {
+        CCTP_TOKEN_MESSENGER_MINTER_MAINNET
+    } else {
+        CCTP_TOKEN_MESSENGER_MINTER_TESTNET
+    };
+    Address::from_string(&String::from_str(env, strkey))
 }
 
 pub(crate) fn validate_cctp_target(target: &PayoutTarget) -> Result<(), ContractError> {
@@ -87,8 +113,7 @@ pub fn cc_release_fund(
                 return Err(ContractError::ZeroBurnAmount);
             }
 
-            let cctp_address =
-                Address::from_string(&String::from_str(env, CCTP_TOKEN_MESSENGER_MINTER));
+            let cctp_address = token_messenger_minter(env);
 
             let token_client = token::Client::new(env, token);
             token_client.approve(

@@ -147,7 +147,9 @@ Set the contributor target to `PayoutTarget::Cctp(destination_domain, recipient)
 | --- | ---: |
 | Ethereum | `0` |
 | Avalanche | `1` |
+| OP Mainnet | `2` |
 | Arbitrum | `3` |
+| Noble | `4` |
 | Solana | `5` |
 | Base | `6` |
 | Polygon PoS | `7` |

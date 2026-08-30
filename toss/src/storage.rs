@@ -2,11 +2,6 @@ use crate::error::ContractError;
 use crate::types::{EscrowState, Milestone};
 use soroban_sdk::{contracttype, Address, Env, Vec};
 
-// Refresh an entry once it has less than this many ledgers remaining, then
-// extend it to the longer target lifetime.
-const TTL_THRESHOLD_LEDGERS: u32 = 100_000;
-const TTL_EXTEND_TO_LEDGERS: u32 = 200_000;
-
 #[contracttype]
 pub enum StorageKey {
     Escrow,         // EscrowState
@@ -15,45 +10,78 @@ pub enum StorageKey {
     Admin,          // Address — can call initialize_escrow
 }
 
-pub fn get_escrow(env: &Env) -> Result<EscrowState, ContractError> {
-    let key = StorageKey::Escrow;
+fn ttl_params(env: &Env) -> (u32, u32) {
+    let max = env.storage().max_ttl();
+    (max / 2, max)
+}
+
+fn bump_instance(env: &Env) {
+    let (threshold, extend_to) = ttl_params(env);
+    env.storage().instance().extend_ttl(threshold, extend_to);
+}
+
+fn bump_persistent(env: &Env, key: &StorageKey) {
+    let (threshold, extend_to) = ttl_params(env);
     env.storage()
         .persistent()
+        .extend_ttl(key, threshold, extend_to);
+}
+
+pub fn get_escrow(env: &Env) -> Result<EscrowState, ContractError> {
+    bump_instance(env);
+    let key = StorageKey::Escrow;
+    let escrow = env
+        .storage()
+        .persistent()
         .get(&key)
-        .ok_or(ContractError::EscrowNotFound)
+        .ok_or(ContractError::EscrowNotFound)?;
+    bump_persistent(env, &key);
+    Ok(escrow)
 }
 
 pub fn set_escrow(env: &Env, escrow: &EscrowState) {
+    bump_instance(env);
     let key = StorageKey::Escrow;
     env.storage().persistent().set(&key, escrow);
-    env.storage()
-        .persistent()
-        .extend_ttl(&key, TTL_THRESHOLD_LEDGERS, TTL_EXTEND_TO_LEDGERS);
+    bump_persistent(env, &key);
 }
 
 pub fn has_escrow(env: &Env) -> bool {
+    bump_instance(env);
     let key = StorageKey::Escrow;
-    env.storage().persistent().has(&key)
+    let present = env.storage().persistent().has(&key);
+    if present {
+        bump_persistent(env, &key);
+    }
+    present
 }
 
 pub fn get_milestone(env: &Env, issue_id: u64) -> Result<Milestone, ContractError> {
+    bump_instance(env);
     let key = StorageKey::Milestone(issue_id);
-    env.storage()
+    let milestone = env
+        .storage()
         .persistent()
         .get(&key)
-        .ok_or(ContractError::MilestoneNotFound)
+        .ok_or(ContractError::MilestoneNotFound)?;
+    bump_persistent(env, &key);
+    Ok(milestone)
 }
 
 pub fn set_milestone(env: &Env, issue_id: u64, milestone: &Milestone) {
+    bump_instance(env);
     let key = StorageKey::Milestone(issue_id);
     env.storage().persistent().set(&key, milestone);
-    env.storage()
-        .persistent()
-        .extend_ttl(&key, TTL_THRESHOLD_LEDGERS, TTL_EXTEND_TO_LEDGERS);
+    bump_persistent(env, &key);
 }
 
 pub fn get_issue_ids(env: &Env) -> Vec<u64> {
+    bump_instance(env);
     let key = StorageKey::EscrowIssueIds;
+    if !env.storage().persistent().has(&key) {
+        return Vec::new(env);
+    }
+    bump_persistent(env, &key);
     env.storage()
         .persistent()
         .get(&key)
@@ -61,6 +89,7 @@ pub fn get_issue_ids(env: &Env) -> Vec<u64> {
 }
 
 pub fn push_issue_id(env: &Env, issue_id: u64) {
+    bump_instance(env);
     let key = StorageKey::EscrowIssueIds;
     let mut ids: Vec<u64> = env
         .storage()
@@ -69,28 +98,29 @@ pub fn push_issue_id(env: &Env, issue_id: u64) {
         .unwrap_or(Vec::new(env));
     ids.push_back(issue_id);
     env.storage().persistent().set(&key, &ids);
-    env.storage()
-        .persistent()
-        .extend_ttl(&key, TTL_THRESHOLD_LEDGERS, TTL_EXTEND_TO_LEDGERS);
+    bump_persistent(env, &key);
 }
 
 pub fn set_issue_ids(env: &Env, ids: &Vec<u64>) {
+    bump_instance(env);
     let key = StorageKey::EscrowIssueIds;
     env.storage().persistent().set(&key, ids);
-    env.storage()
-        .persistent()
-        .extend_ttl(&key, TTL_THRESHOLD_LEDGERS, TTL_EXTEND_TO_LEDGERS);
+    bump_persistent(env, &key);
 }
 
 pub fn get_admin(env: &Env) -> Option<Address> {
+    bump_instance(env);
     let key = StorageKey::Admin;
-    env.storage().persistent().get(&key)
+    let admin = env.storage().persistent().get(&key);
+    if admin.is_some() {
+        bump_persistent(env, &key);
+    }
+    admin
 }
 
 pub fn set_admin(env: &Env, admin: &Address) {
+    bump_instance(env);
     let key = StorageKey::Admin;
     env.storage().persistent().set(&key, admin);
-    env.storage()
-        .persistent()
-        .extend_ttl(&key, TTL_THRESHOLD_LEDGERS, TTL_EXTEND_TO_LEDGERS);
+    bump_persistent(env, &key);
 }

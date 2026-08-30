@@ -3,6 +3,7 @@
 // parameters; the messenger interface itself is fixed by Circle.
 #![allow(clippy::too_many_arguments)]
 
+use soroban_sdk::testutils::storage::Instance as _;
 use soroban_sdk::testutils::storage::Persistent as _;
 use soroban_sdk::testutils::Events as _;
 
@@ -72,24 +73,28 @@ fn last_mock_deposit(env: &Env, cctp_address: &Address) -> MockDepositArgs {
 }
 
 fn setup_env() -> (Env, soroban_sdk::Address) {
+    setup_env_on_network(
+        Default::default(),
+        cctp::CCTP_TOKEN_MESSENGER_MINTER_TESTNET,
+    )
+}
+
+fn setup_env_on_network(network_id: [u8; 32], messenger: &str) -> (Env, soroban_sdk::Address) {
     let env = Env::default();
     env.ledger().set(LedgerInfo {
         timestamp: 12345,
         protocol_version: 23,
         sequence_number: 1,
-        network_id: Default::default(),
+        network_id,
         base_reserve: 10,
         min_temp_entry_ttl: 10000,
         min_persistent_entry_ttl: 10000,
-        max_entry_ttl: 200000,
+        max_entry_ttl: 3_110_400,
     });
     let contract_id = env.register(TOSSContract, ());
 
-    // Register mock CCTP contract
-    let cctp_address = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(
-        &env,
-        cctp::CCTP_TOKEN_MESSENGER_MINTER,
-    ));
+    let cctp_address =
+        soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(&env, messenger));
     env.register_at(&cctp_address, MockCctpContract, ());
 
     (env, contract_id)
@@ -368,9 +373,7 @@ fn test_ttl_extended_on_escrow_write() {
             .storage()
             .persistent()
             .get_ttl(&storage::StorageKey::Escrow);
-        // `get_ttl` excludes the current ledger, so an `extend_to` value of
-        // 200,000 is observed as 199,999 at sequence number 1.
-        assert_eq!(ttl, 199_999);
+        assert_ttl_near_max(&env, ttl);
     });
 }
 
@@ -394,7 +397,7 @@ fn test_ttl_extended_on_milestone_write() {
             .storage()
             .persistent()
             .get_ttl(&storage::StorageKey::Milestone(1));
-        assert_eq!(ttl, 199_999);
+        assert_ttl_near_max(&env, ttl);
     });
 }
 
@@ -409,7 +412,7 @@ fn test_ttl_extended_on_admin_write() {
             .storage()
             .persistent()
             .get_ttl(&storage::StorageKey::Admin);
-        assert_eq!(ttl, 199_999);
+        assert_ttl_near_max(&env, ttl);
     });
 }
 
@@ -423,7 +426,30 @@ fn test_ttl_extended_on_issue_ids_write() {
             .storage()
             .persistent()
             .get_ttl(&storage::StorageKey::EscrowIssueIds);
-        assert_eq!(ttl, 199_999);
+        assert_ttl_near_max(&env, ttl);
+    });
+}
+
+#[test]
+fn test_instance_ttl_extended_on_escrow_write() {
+    let (env, contract_id) = setup_env();
+
+    let escrow = EscrowState {
+        repo_id: 1,
+        maintainer: Address::generate(&env),
+        platform: Address::generate(&env),
+        token: Address::generate(&env),
+        total_deposited: 0,
+        reserved: 0,
+        total_released: 0,
+        created_at: 100,
+        is_active: true,
+    };
+
+    env.as_contract(&contract_id, || {
+        storage::set_escrow(&env, &escrow);
+        let ttl = env.storage().instance().get_ttl();
+        assert_ttl_near_max(&env, ttl);
     });
 }
 
@@ -834,6 +860,22 @@ fn valid_evm_recipient(env: &Env) -> soroban_sdk::BytesN<32> {
     let mut recipient = [0u8; 32];
     recipient[31] = 1;
     soroban_sdk::BytesN::from_array(env, &recipient)
+}
+
+fn unpadded_recipient() -> [u8; 32] {
+    let mut recipient = [0u8; 32];
+    recipient[0] = 1;
+    recipient
+}
+
+fn assert_ttl_near_max(env: &Env, ttl: u32) {
+    let max = env.storage().max_ttl();
+    assert!(
+        ttl > 200_000,
+        "ttl {ttl} still looks like the old 200k cap; max_ttl={max}"
+    );
+    assert!(ttl <= max);
+    assert!(max - ttl <= 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -1797,6 +1839,113 @@ fn test_cctp_valid_solana_recipient() {
         ),
     );
     assert!(result.is_ok());
+}
+
+#[test]
+fn test_cctp_invalid_padding_optimism() {
+    let setup = setup_funding_env(1_000);
+
+    let result = setup.client.try_assign_contributor(
+        &1,
+        &PayoutTarget::Cctp(
+            2,
+            soroban_sdk::BytesN::from_array(&setup.env, &unpadded_recipient()),
+        ),
+    );
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        ContractError::InvalidCctpRecipientPadding
+    );
+}
+
+#[test]
+fn test_cctp_valid_optimism_recipient() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let milestone = Milestone {
+            issue_id: 1,
+            reward: 500,
+            contributor: PayoutTarget::None,
+            status: MilestoneStatus::Pending,
+            created_at: 100,
+            released_at: None,
+            actual_released: 0,
+        };
+        storage::set_milestone(&setup.env, 1, &milestone);
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.reserved += 500;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    let result = setup
+        .client
+        .try_assign_contributor(&1, &PayoutTarget::Cctp(2, valid_evm_recipient(&setup.env)));
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_cctp_valid_noble_recipient() {
+    let setup = setup_funding_env(1_000);
+    setup.client.try_deposit_funds(&1_000).unwrap().unwrap();
+
+    let noble_recipient = [1u8; 32];
+
+    setup.env.as_contract(&setup.contract_id, || {
+        let milestone = Milestone {
+            issue_id: 1,
+            reward: 500,
+            contributor: PayoutTarget::None,
+            status: MilestoneStatus::Pending,
+            created_at: 100,
+            released_at: None,
+            actual_released: 0,
+        };
+        storage::set_milestone(&setup.env, 1, &milestone);
+        let mut escrow = storage::get_escrow(&setup.env).unwrap();
+        escrow.reserved += 500;
+        storage::set_escrow(&setup.env, &escrow);
+    });
+
+    let result = setup.client.try_assign_contributor(
+        &1,
+        &PayoutTarget::Cctp(
+            4,
+            soroban_sdk::BytesN::from_array(&setup.env, &noble_recipient),
+        ),
+    );
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_cctp_noble_empty_recipient() {
+    let setup = setup_funding_env(1_000);
+
+    let result = setup.client.try_assign_contributor(
+        &1,
+        &PayoutTarget::Cctp(4, soroban_sdk::BytesN::from_array(&setup.env, &[0; 32])),
+    );
+    assert_eq!(result.unwrap_err().unwrap(), ContractError::EmptyRecipient);
+}
+
+#[test]
+fn test_cctp_pubnet_uses_mainnet_messenger() {
+    let (env, contract_id) = setup_env_on_network(
+        [
+            0x7a, 0xc3, 0x39, 0x97, 0x54, 0x4e, 0x31, 0x75, 0xd2, 0x66, 0xbd, 0x02, 0x24, 0x39,
+            0xb2, 0x2c, 0xdb, 0x16, 0x50, 0x8c, 0x01, 0x16, 0x3f, 0x26, 0xe5, 0xcb, 0x2a, 0x3e,
+            0x10, 0x45, 0xa9, 0x79,
+        ],
+        cctp::CCTP_TOKEN_MESSENGER_MINTER_MAINNET,
+    );
+    env.as_contract(&contract_id, || {
+        let expected = soroban_sdk::Address::from_string(&soroban_sdk::String::from_str(
+            &env,
+            cctp::CCTP_TOKEN_MESSENGER_MINTER_MAINNET,
+        ));
+        assert_eq!(cctp::token_messenger_minter(&env), expected);
+    });
 }
 
 #[test]
